@@ -378,6 +378,7 @@ function setupPlayButtons() {
   const toggleIndicesBtn = document.getElementById('toggleIndicesBtn');
   const scoreBtn = document.getElementById('scoreBtn');
   const passBtn = document.getElementById('passBtn');
+  const aiMoveBtn = document.getElementById('aiMoveBtn');
   const finishMarkingBtn = document.getElementById('finishMarkingBtn');
 
   if (undoBtn) undoBtn.onclick = undoStep;
@@ -396,6 +397,17 @@ function setupPlayButtons() {
   }
   if (passBtn) {
     passBtn.onclick = handlePass;
+  }
+  if (aiMoveBtn) {
+    aiMoveBtn.onclick = async () => {
+      if (hexGoAI.thinking || gameEnded) return;
+      const move = await hexGoAI.makeMove(2000); // Increased to 2000 iterations
+      if (move === 'pass') {
+        handlePass();
+      } else {
+        placeStone(move);
+      }
+    };
   }
   if (finishMarkingBtn) {
     finishMarkingBtn.onclick = finishMarkingDeadStones;

@@ -16,6 +16,7 @@
       <button class="menu-btn" id="menuPresetGoban">從預設棋盤中選擇<br>Choose from Preset Gobans</button>
       <button class="menu-btn" id="menuDesignGoban">設計自己的棋盤<br>Design Your Own Goban</button>
       <button class="menu-btn" id="menuLoadGoban">載入棋盤<br>Load Goban</button>
+      <button class="menu-btn" id="menuGameReview">觀看對局記錄<br>Review Game Records</button>
       <button class="menu-btn" id="menuSettings">設定<br>Settings</button>
     </div>
   </div>
@@ -107,11 +108,13 @@
         <div class="row">
           <button id="saveGameBtn">Save Game</button>
           <button id="loadGameBtn">Load Game</button>
+          <button id="loadGameReviewBtn">Load Game Review</button>
           <span id="gameLoadStatus"></span>
         </div>
         <div class="row">
           <button id="toggleIndicesBtn">Show Stone Indices</button>
           <button id="passBtn">Pass</button>
+          <button id="aiMoveBtn">AI Move</button>
         </div>
         <div class="row" id="gameStatusRow" style="display: none; font-weight: bold; font-size: 18px; color: #ff4444; padding: 8px 0;">
           <span id="gameStatus"></span>
@@ -132,7 +135,62 @@
       </div>
     </div>
   </main>
+
+  <!-- Game Review Modal -->
+  <div id="gameReviewModal" style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.7); z-index: 1000; overflow-y: auto; padding: 20px;">
+    <div style="background: #2a2a2a; color: #e0e0e0; padding: 20px; border-radius: 8px; max-width: 1000px; margin: 20px auto; max-height: 90vh; overflow-y: auto;">
+      <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
+        <h2>Game Review - Inspection</h2>
+        <button id="closeGameReviewBtn" style="padding: 8px 16px; cursor: pointer;">Close</button>
+      </div>
+      
+      <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px;">
+        <!-- Left side: Game list -->
+        <div>
+          <h3>Available Games</h3>
+          <div id="gameReviewList" style="border: 1px solid #444; padding: 10px; border-radius: 4px; max-height: 400px; overflow-y: auto;">
+            <div style="color: #888;">Loading games...</div>
+          </div>
+        </div>
+        
+        <!-- Right side: Game details -->
+        <div>
+          <h3>Game Details</h3>
+          <div id="gameReviewDetails" style="border: 1px solid #444; padding: 15px; border-radius: 4px;">
+            <div style="color: #888;">Select a game to view details</div>
+          </div>
+        </div>
+      </div>
+      
+      <!-- Playback controls -->
+      <div id="gameReviewPlayback" style="display: none; margin-top: 20px; padding-top: 20px; border-top: 1px solid #444;">
+        <h3>Select game to load and view on board</h3>
+        <div style="display: flex; gap: 10px; margin-bottom: 10px; align-items: center;">
+          <button id="reviewFirstBtn" style="padding: 8px 16px; cursor: pointer;">⏮ First</button>
+          <button id="reviewPrevBtn" style="padding: 8px 16px; cursor: pointer;">◀ Prev</button>
+          <button id="reviewPlayBtn" style="padding: 8px 16px; cursor: pointer;">▶ Play</button>
+          <button id="reviewPauseBtn" style="padding: 8px 16px; cursor: pointer;">⏸ Pause</button>
+          <button id="reviewNextBtn" style="padding: 8px 16px; cursor: pointer;">▶ Next</button>
+          <button id="reviewLastBtn" style="padding: 8px 16px; cursor: pointer;">⏭ Last</button>
+          <span id="moveCounter" style="margin-left: 20px; font-weight: bold;">Move: 0/0</span>
+        </div>
+        <input type="range" id="moveSlider" style="width: 100%; cursor: pointer;" min="0" max="100" value="0">
+        <div style="margin-top: 10px; display: flex; gap: 10px; align-items: center;">
+          <label>Speed:</label>
+          <input type="range" id="speedSlider" min="100" max="2000" value="800" step="100" style="width: 200px;">
+          <span id="speedDisplay">0.8s/move</span>
+        </div>
+        <div id="currentBoardState" style="margin-top: 15px; padding: 10px; background: #1a1a1a; border-radius: 4px; font-size: 13px;">
+          <div style="color: #888;">Select a game above to load it</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
   <script src="common.js"></script>
+  <script src="mcts.js"></script>
+  <script src="ai_player.js"></script>
+  <script src="game_reviewer.js"></script>
   <script src="sketch.js"></script>
 </body>
 </html>
