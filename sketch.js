@@ -784,7 +784,26 @@ function mousePressed() {
     return;
   }
   if (mode === 'play' && hoverVertex !== null) {
-    if (window.multiplayerState?.active && !window.multiplayerState?.canMove) return;
+    // Compute move permission inline so it's always based on live state,
+    // not a potentially-stale canMove flag that depends on event timing.
+    if (window.multiplayerState?.active) {
+      const ms = window.multiplayerState;
+      const isSpectator = (ms.role || '').toLowerCase() === 'spectator';
+      const hasOpponent = (ms.memberCount || 0) >= 2;
+      let allowed;
+      if (isSpectator) {
+        allowed = false;
+      } else if (ms.color === 'study') {
+        allowed = true;                         // study: both move freely
+      } else if (!ms.color) {
+        allowed = !hasOpponent;                 // no color yet: free if solo
+      } else {
+        // Enforce turn order: player can only click on their own turn.
+        // currentPlayer is the live JS variable, always up-to-date.
+        allowed = !hasOpponent || ms.color === currentPlayer;
+      }
+      if (!allowed) return;
+    }
     if (markingDeadStones) {
       toggleDeadStone(hoverVertex);
     } else {

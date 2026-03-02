@@ -351,10 +351,10 @@ function onRoomInvite(payload) {
 function onRoomState(payload) {
   if (!payload || !payload.state) return;
   if (window.applyGameSnapshot) {
-    // Skip only if the multiplayer game is already actively running.
-    // Using a gameStarted flag rather than mode, so opponents coming from a local game
-    // (where mode may already be 'play') still receive the initial board.
-    if (multiplayerState.gameStarted && window.getCurrentMode?.() === 'play') return;
+    // Once the initial board has been applied for this game session, ignore further
+    // room:state events (they are post-move syncs for late-joining spectators).
+    // gameStarted is reset to false by onRoomRules at the start of each new game.
+    if (multiplayerState.gameStarted) return;
     multiplayerState.gameStarted = true;
     window.applyGameSnapshot(payload.state);
     showGameStage();
@@ -478,6 +478,9 @@ function sendInvite() {
 
 function syncGameState() {
   if (!multiplayerState.roomId || !window.getGameSnapshot) return;
+  // Mark this client as having an active multiplayer game so onRoomState won't
+  // re-apply a snapshot echoed back from another player's post-move sync.
+  multiplayerState.gameStarted = true;
   const state = window.getGameSnapshot();
   multiplayerState.socket.emit('game:state', { roomId: multiplayerState.roomId, state });
 }
@@ -594,8 +597,9 @@ window.multiplayerSendMove = (vid, color) => {
     roomId: multiplayerState.roomId,
     move: { type: 'place', vid, color },
   });
-  // Do not syncGameState on every move — use incremental game:move only.
-  // syncGameState is called separately for initial board setup.
+  // Also sync the full board state so late-joining spectators always get the
+  // current board (not just the initial empty snapshot from game start).
+  syncGameState();
 };
 
 window.multiplayerSendPass = () => {
@@ -604,6 +608,7 @@ window.multiplayerSendPass = () => {
     roomId: multiplayerState.roomId,
     move: { type: 'pass' },
   });
+  syncGameState();
 };
 
 window.multiplayerSyncState = syncGameState;
@@ -621,32 +626,35 @@ window.multiplayerSendRules = (rules) => {
 };
 
 window.multiplayerUpdateTurn = () => {
-  if (!window.multiplayerState || !window.getCurrentPlayer) return;
+  if (!window.getCurrentPlayer) return;
   const currentPlayer = window.getCurrentPlayer();
-  const hasOpponent = (window.multiplayerState.memberCount || 0) >= 2;
-  const isSpectator = (window.multiplayerState.role || '').toLowerCase() === 'spectator';
+  // Read directly from the live multiplayerState — not the frozen window snapshot,
+  // which is only rebuilt when updateMultiplayerState() is explicitly called.
+  const active = !!multiplayerState.roomId;
+  const hasOpponent = (multiplayerState.memberCount || 0) >= 2;
+  const isSpectator = (multiplayerState.role || '').toLowerCase() === 'spectator';
   let canMove;
-  if (!window.multiplayerState.active) {
+  if (!active) {
     // Local play — always can move
     canMove = true;
   } else if (isSpectator) {
     // Spectators can never place stones
     canMove = false;
-  } else if (window.multiplayerState.color === 'study') {
+  } else if (multiplayerState.color === 'study') {
     // Study mode — both players can move freely
     canMove = true;
-  } else if (!window.multiplayerState.color) {
+  } else if (!multiplayerState.color) {
     // No color assigned yet (before rules set) — allow free play while solo
     canMove = !hasOpponent;
   } else if (hasOpponent) {
     // Competitive mode with opponent present — enforce turn order
-    canMove = window.multiplayerState.color === currentPlayer;
+    canMove = multiplayerState.color === currentPlayer;
   } else {
     // Solo in room waiting for opponent — allow free play
     canMove = true;
   }
   multiplayerState.canMove = canMove;
-  window.multiplayerState.canMove = canMove;
+  if (window.multiplayerState) window.multiplayerState.canMove = canMove;
 };
 
 window.addEventListener('DOMContentLoaded', initMultiplayer);
