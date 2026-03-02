@@ -2,22 +2,19 @@ name: Deploy to DigitalOcean
 
 on:
   push:
-    branches: [ main ] # Check if your branch is 'main' or 'master'
+    branches: [ main ]
 
 jobs:
   deploy:
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-
       - name: SSH and Deploy
         uses: appleboy/ssh-action@master
         with:
           host: ${{ secrets.HOST }}
           username: ${{ secrets.USER }}
           key: ${{ secrets.SSH_PRIVATE_KEY }}
+          # The script below navigates to your folder and pulls code
           script: |
-            cd /var/www/2602_VorteGoWebsite
+            cd /root/2602_VorteGoWebsite
             git pull origin main
-            # Add any build commands here (e.g., npm install)
