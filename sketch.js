@@ -16,7 +16,7 @@ let hoverVertex = null;
 let hoverEdge = null;
 let dragging = null;
 let mode = 'move-vertex';
-let currentScreen = 'menu'; // menu, preset, random, editor, play
+let currentScreen = 'room-menu'; // room-menu, preset, random, editor, play
 
 // Go game state
 let gameStones = new Map(); // vid -> 'black' or 'white'
@@ -88,13 +88,13 @@ let gameUndoIndex = -1;
 // dirAxial is defined in common.js
 
 function setup() {
-  // Don't create canvas yet - wait for menu selection
+  // Don't create canvas yet - wait for room menu selection
   noLoop();
   setupMenuListeners();
 }
 
 function setupMenuListeners() {
-  // Main menu
+  // Room menu
   document.getElementById('menuRandomGoban')?.addEventListener('click', startRandomGoban);
   document.getElementById('menuPresetGoban')?.addEventListener('click', showPresetMenu);
   document.getElementById('menuDesignGoban')?.addEventListener('click', startDesignMode);
@@ -115,15 +115,23 @@ function setupMenuListeners() {
   document.getElementById('backToMenuBtn')?.addEventListener('click', showMainMenu);
 }
 
+// Switch visible section inside the single room panel
+function showPanelSection(section) {
+  // section: 'roomMenu' | 'random' | 'edit' | 'play'
+  setDisplay('sectionRoomMenu', section === 'roomMenu' ? 'block' : 'none');
+  setDisplay('sectionRandom',   section === 'random'   ? 'block' : 'none');
+  setDisplay('sectionEdit',     section === 'edit'     ? 'block' : 'none');
+  setDisplay('sectionPlay',     section === 'play'     ? 'block' : 'none');
+  setDisplay('backToMenuBtn',   section !== 'roomMenu' ? 'block' : 'none');
+}
+
 function showMainMenu() {
-  document.getElementById('menu').style.display = 'block';
   document.getElementById('presetMenu').style.display = 'none';
   document.getElementById('app').style.display = 'none';
-  setDisplay('ui', 'none');
-  setDisplay('uiRandom', 'none');
-  setDisplay('uiEdit', 'none');
-  setDisplay('uiPlay', 'none');
-  currentScreen = 'menu';
+  const placeholder = document.getElementById('roomPlaceholder');
+  if (placeholder) placeholder.style.display = 'flex';
+  showPanelSection('roomMenu');
+  currentScreen = 'room-menu';
   
   // Clear play mode and stones when returning to menu
   if (mode === 'play') {
@@ -138,24 +146,18 @@ function showMainMenu() {
 }
 
 function showPresetMenu() {
-  document.getElementById('menu').style.display = 'none';
   document.getElementById('presetMenu').style.display = 'block';
   document.getElementById('app').style.display = 'none';
-  setDisplay('ui', 'none');
-  setDisplay('uiRandom', 'none');
-  setDisplay('uiEdit', 'none');
-  setDisplay('uiPlay', 'none');
+  showPanelSection('roomMenu');
   currentScreen = 'preset';
 }
 
 function startRandomGoban() {
-  document.getElementById('menu').style.display = 'none';
   document.getElementById('presetMenu').style.display = 'none';
   document.getElementById('app').style.display = 'block';
-  setDisplay('ui', 'block');
-  setDisplay('uiRandom', 'block');
-  setDisplay('uiEdit', 'none');
-  setDisplay('uiPlay', 'none');
+  const placeholder = document.getElementById('roomPlaceholder');
+  if (placeholder) placeholder.style.display = 'none';
+  showPanelSection('random');
   currentScreen = 'random';
 
   ensureCanvas();
@@ -191,30 +193,26 @@ function generateRandomGoban() {
 }
 
 function acceptRandomGoban() {
-  // Transition to play mode with a clear goban
   mode = 'play';
-  gameStones.clear(); // Clear any previous stones
+  gameStones.clear();
   currentPlayer = 'black';
   capturedBlack = 0;
   capturedWhite = 0;
-  initGameHistory(); // Fresh game undo/redo with base snapshot
+  initGameHistory();
   updateGameUI();
-  setDisplay('uiRandom', 'none');
-  setDisplay('uiEdit', 'none');
-  setDisplay('uiPlay', 'block');
+  showPanelSection('play');
   currentScreen = 'play';
   setupPlayButtons();
   redraw();
+  if (window.multiplayerSyncState) window.multiplayerSyncState();
 }
 
 function startDesignMode() {
-  document.getElementById('menu').style.display = 'none';
   document.getElementById('app').style.display = 'block';
   document.getElementById('presetMenu').style.display = 'none';
-  setDisplay('ui', 'block');
-  setDisplay('uiRandom', 'none');
-  setDisplay('uiEdit', 'block');
-  setDisplay('uiPlay', 'none');
+  const placeholder = document.getElementById('roomPlaceholder');
+  if (placeholder) placeholder.style.display = 'none';
+  showPanelSection('edit');
   currentScreen = 'editor';
 
   ensureCanvas();
@@ -230,6 +228,8 @@ function startDesignMode() {
 function loadPresetGoban(presetName) {
   document.getElementById('presetMenu').style.display = 'none';
   document.getElementById('app').style.display = 'block';
+  const placeholder = document.getElementById('roomPlaceholder');
+  if (placeholder) placeholder.style.display = 'none';
   currentScreen = 'play';
 
   ensureCanvas();
@@ -270,13 +270,11 @@ function loadPresetGoban(presetName) {
       capturedBlack = 0;
       capturedWhite = 0;
       initGameHistory();
-      setDisplay('ui', 'block');
-      setDisplay('uiRandom', 'none');
-      setDisplay('uiEdit', 'none');
-      setDisplay('uiPlay', 'block');
+      showPanelSection('play');
       setupPlayButtons();
       updateGameUI();
       redraw();
+      if (window.multiplayerSyncState) window.multiplayerSyncState();
     })
     .catch(err => {
       alert(`Error loading preset: ${err.message}`);
@@ -396,18 +394,22 @@ function setupPlayButtons() {
     };
   }
   if (passBtn) {
-    passBtn.onclick = handlePass;
+    passBtn.onclick = () => handlePass(false);
   }
   if (aiMoveBtn) {
     aiMoveBtn.onclick = async () => {
       if (hexGoAI.thinking || gameEnded) return;
       const move = await hexGoAI.makeMove(2000); // Increased to 2000 iterations
       if (move === 'pass') {
-        handlePass();
+        handlePass(false);
       } else {
         placeStone(move);
       }
     };
+    if (window.multiplayerState?.active) {
+      aiMoveBtn.disabled = true;
+      aiMoveBtn.textContent = 'AI Move (offline)';
+    }
   }
   if (finishMarkingBtn) {
     finishMarkingBtn.onclick = finishMarkingDeadStones;
@@ -483,9 +485,7 @@ function loadGame() {
           // Switch to play mode
           mode = 'play';
           currentScreen = 'play';
-          setDisplay('uiPlay', 'block');
-          setDisplay('uiRandom', 'none');
-          setDisplay('uiEdit', 'none');
+          showPanelSection('play');
           setupPlayButtons();
           updateGameUI();
           redraw();
@@ -523,6 +523,7 @@ function restoreGameFromData(data) {
     previousBoardState: snapshot.previousBoardState ? new Map(snapshot.previousBoardState) : null,
   }));
   gameUndoIndex = data.gameUndoIndex;
+  if (window.multiplayerSyncState) window.multiplayerSyncState();
 }
 
 function windowResized() {
@@ -533,7 +534,7 @@ function windowResized() {
 }
 
 function draw() {
-  background(120, 100, 70);
+  clear();
   drawGobanBorder();
   drawSectors();
   drawFaces();
@@ -550,7 +551,6 @@ function draw() {
     updateRelaxStatus();
     if (relaxFrame < relaxMaxFrames) {
       relaxVertices(1); // single iteration per frame
-      redraw();
     } else {
       relaxing = false;
       relaxFrame = 0;
@@ -746,6 +746,7 @@ function mousePressed() {
     return;
   }
   if (mode === 'play' && hoverVertex !== null) {
+    if (window.multiplayerState?.active && !window.multiplayerState?.canMove) return;
     if (markingDeadStones) {
       toggleDeadStone(hoverVertex);
     } else {
@@ -776,7 +777,7 @@ function mouseReleased() {
   dragging = null;
 }
 
-function handlePass() {
+function handlePass(isRemote = false) {
   if (gameEnded || markingDeadStones) return;
   
   if (lastMoveWasPass) {
@@ -792,6 +793,9 @@ function handlePass() {
     currentPlayer = currentPlayer === 'black' ? 'white' : 'black';
     updateGameUI();
     console.log(`${currentPlayer === 'white' ? 'Black' : 'White'} passed.`);
+  }
+  if (!isRemote && window.multiplayerSendPass) {
+    window.multiplayerSendPass();
   }
 }
 
@@ -1225,6 +1229,7 @@ function startRelaxation() {
   relaxing = true;
   relaxFrame = 0;
   updateRelaxStatus();
+  loop(); // kick off the draw loop so relaxation animates without waiting for mouse movement
 }
 
 function updateRelaxStatus() {
@@ -1403,8 +1408,7 @@ function drawSymbols() {
 function togglePlayMode() {
   if (mode === 'play') {
     mode = 'move-vertex';
-    setDisplay('uiPlay', 'none');
-    setDisplay('uiEdit', 'block');
+    showPanelSection('edit');
   } else {
     mode = 'play';
     gameStones.clear();
@@ -1412,8 +1416,7 @@ function togglePlayMode() {
     capturedBlack = 0;
     capturedWhite = 0;
     initGameHistory();
-    setDisplay('uiEdit', 'none');
-    setDisplay('uiPlay', 'block');
+    showPanelSection('play');
     setupPlayButtons();
   }
   updateUiMode();
@@ -1442,6 +1445,7 @@ function initGameHistory() {
   gameUndoStack = [snapshot];
   gameUndoIndex = 0;
   updateUndoUI();
+  if (window.multiplayerSyncState) window.multiplayerSyncState();
 }
 
 function drawStones() {
@@ -1585,7 +1589,7 @@ function restoreGameState(snapshot) {
   redraw();
 }
 
-function placeStone(vid) {
+function placeStone(vid, options = {}) {
   // Can't place on occupied vertex
   if (gameStones.has(vid)) return;
   
@@ -1685,6 +1689,9 @@ function placeStone(vid) {
   captureGameMove(moveDesc);
   
   updateGameUI();
+  if (!options.remote && window.multiplayerSendMove) {
+    window.multiplayerSendMove(vid, moveColor);
+  }
 }
 
 function getGroup(vid) {
@@ -1755,6 +1762,7 @@ function updateGameUI() {
       gameInfoEl.textContent = '';
     }
   }
+  if (window.multiplayerUpdateTurn) window.multiplayerUpdateTurn();
 }
 
 // ---- Auto edge removal ----
@@ -1921,13 +1929,11 @@ function saveGoban() {
 
 function startLoadGoban() {
   // Set up editor environment first
-  document.getElementById('menu').style.display = 'none';
   document.getElementById('app').style.display = 'block';
   document.getElementById('presetMenu').style.display = 'none';
-  setDisplay('ui', 'block');
-  setDisplay('uiRandom', 'none');
-  setDisplay('uiEdit', 'block');
-  setDisplay('uiPlay', 'none');
+  const placeholder = document.getElementById('roomPlaceholder');
+  if (placeholder) placeholder.style.display = 'none';
+  showPanelSection('edit');
   currentScreen = 'editor';
   
   if (!canvasCreated) {
@@ -1952,8 +1958,7 @@ function startLoadGoban() {
           restoreGameFromData(json);
           mode = 'play';
           currentScreen = 'play';
-          setDisplay('uiEdit', 'none');
-          setDisplay('uiPlay', 'block');
+          showPanelSection('play');
           setupPlayButtons();
           updateGameUI();
           if (saveLoadStatusEl) saveLoadStatusEl.textContent = 'Game loaded';
@@ -1996,8 +2001,7 @@ function loadGoban() {
           restoreGameFromData(json);
           mode = 'play';
           currentScreen = 'play';
-          setDisplay('uiEdit', 'none');
-          setDisplay('uiPlay', 'block');
+          showPanelSection('play');
           setupPlayButtons();
           updateGameUI();
           if (saveLoadStatusEl) saveLoadStatusEl.textContent = 'Game loaded';
@@ -2727,3 +2731,65 @@ function renderScore(score) {
     resultRow.style.display = 'block';
   }
 }
+
+window.getCurrentPlayer = () => currentPlayer;
+
+window.getGameSnapshot = () => ({
+  version: 1,
+  type: 'game',
+  timestamp: new Date().toISOString(),
+  hexRadius,
+  spacing,
+  vertices: vertices.map((v) => ({
+    id: v.id,
+    x: v.x,
+    y: v.y,
+    type: v.type,
+    q: v.q ?? 0,
+    r: v.r ?? 0,
+    peers: v.peers ?? [v.id, v.id, v.id],
+  })),
+  quads: quads.filter((q) => q.active).map((q) => ({ verts: [...q.verts] })),
+  gameStones: Array.from(gameStones.entries()),
+  stoneOrder: Array.from(stoneOrder.entries()),
+  currentPlayer,
+  capturedBlack,
+  capturedWhite,
+  previousBoardState: previousBoardState ? Array.from(previousBoardState.entries()) : null,
+  gameUndoStack: gameUndoStack.map((snapshot) => ({
+    label: snapshot.label,
+    stones: Array.from(snapshot.stones.entries()),
+    stoneOrder: Array.from(snapshot.stoneOrder.entries()),
+    currentPlayer: snapshot.currentPlayer,
+    capturedBlack: snapshot.capturedBlack,
+    capturedWhite: snapshot.capturedWhite,
+    previousBoardState: snapshot.previousBoardState ? Array.from(snapshot.previousBoardState.entries()) : null,
+  })),
+  gameUndoIndex,
+});
+
+window.applyGameSnapshot = (data) => {
+  restoreGoban(data);
+  restoreGameFromData(data);
+  mode = 'play';
+  currentScreen = 'play';
+  showPanelSection('play');
+  setupPlayButtons();
+  updateGameUI();
+  redraw();
+};
+
+window.applyRemoteMove = (move) => {
+  if (!move || move.type !== 'place') return;
+  const originalPlayer = currentPlayer;
+  const beforeSize = gameStones.size;
+  currentPlayer = move.color;
+  placeStone(move.vid, { remote: true });
+  if (gameStones.size === beforeSize) {
+    currentPlayer = originalPlayer;
+  }
+};
+
+window.applyRemotePass = () => {
+  handlePass(true);
+};

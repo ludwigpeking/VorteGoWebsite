@@ -3,140 +3,255 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Hexagonal Goban Editor</title>
+  <title>VorteGo Online</title>
   <script src="p5.js"></script>
   <link rel="stylesheet" href="styles.css" />
 </head>
 <body>
-  <!-- Menu Screen -->
-  <div id="menu">
-    <h3 style="padding-left: 30px;">星旋圍碁 <br>  VorteGo - A Richard Qian Li Game<br><span style="font-size: 14px; font-weight: normal;">© 2026 Richard Qian Li. All rights reserved.</span></h3>
-    <div class="menu-buttons">
-      <button class="menu-btn" id="menuRandomGoban">隨機棋盤<br>Play at Random Goban</button>
-      <button class="menu-btn" id="menuPresetGoban">從預設棋盤中選擇<br>Choose from Preset Gobans</button>
-      <button class="menu-btn" id="menuDesignGoban">設計自己的棋盤<br>Design Your Own Goban</button>
-      <button class="menu-btn" id="menuLoadGoban">載入棋盤<br>Load Goban</button>
-      <button class="menu-btn" id="menuGameReview">觀看對局記錄<br>Review Game Records</button>
-      <button class="menu-btn" id="menuSettings">設定<br>Settings</button>
+  <div id="authCorner" class="auth-corner">
+    <div id="authLinks" class="auth-links">
+      <button id="loginLink" class="ghost-btn">Login</button>
+      <button id="signupLink" class="ghost-btn">Sign Up</button>
+    </div>
+    <div id="authUser" class="auth-user" style="display: none;">
+      <span id="authName" class="auth-name">guest</span>
+      <button id="logoutLink" class="ghost-btn">Logout</button>
     </div>
   </div>
 
-  <!-- Preset Selection Screen -->
+  <div id="authModal" class="modal" style="display: none;">
+    <div class="modal-card">
+      <div class="modal-header">
+        <h2 id="authModalTitle">Welcome Back</h2>
+        <button id="authModalClose" class="icon-btn">Close</button>
+      </div>
+      <div class="modal-tabs">
+        <button id="authTabLogin" class="tab-btn active">Login</button>
+        <button id="authTabSignup" class="tab-btn">Sign Up</button>
+      </div>
+      <form id="authForm" class="auth-form">
+        <div id="authSignupFields" style="display: none;">
+          <label>Username</label>
+          <input id="signupUsername" type="text" autocomplete="username" />
+          <label>Email</label>
+          <input id="signupEmail" type="email" autocomplete="email" />
+        </div>
+        <div id="authLoginFields">
+          <label>Username or Email</label>
+          <input id="loginIdentity" type="text" autocomplete="username" />
+        </div>
+        <label>Password</label>
+        <input id="authPassword" type="password" autocomplete="current-password" />
+        <button id="authSubmit" class="primary-btn" type="submit">Continue</button>
+        <div id="authStatus" class="form-status"></div>
+      </form>
+    </div>
+  </div>
+
+  <div id="recordModal" class="modal" style="display: none;">
+    <div class="modal-card">
+      <div class="modal-header">
+        <h2>Saved Records</h2>
+        <button id="recordModalClose" class="icon-btn">Close</button>
+      </div>
+      <div id="recordList" class="record-list"></div>
+    </div>
+  </div>
+
+  <div id="lobby" class="screen screen-active">
+    <header class="lobby-header">
+      <div class="brand">
+        <span class="brand-title">VorteGo</span>
+        <span class="brand-sub">Online Hex Goban</span>
+      </div>
+      <button id="createRoomBtn" class="primary-btn">Create Game Room</button>
+    </header>
+
+    <div class="lobby-grid">
+      <section class="panel chat-panel">
+        <div class="panel-header">
+          <h3>Global Chat</h3>
+          <span id="lobbyStatus" class="panel-tag">Connected</span>
+        </div>
+        <div id="globalChatLog" class="chat-log"></div>
+        <div class="chat-input">
+          <input id="globalChatInput" type="text" placeholder="Say hello to the lobby" />
+          <button id="globalChatSend" class="primary-btn">Send</button>
+        </div>
+      </section>
+
+      <section class="panel side-panel">
+        <div class="panel-block">
+          <h3>Online Players</h3>
+          <div id="onlineUsers" class="list"></div>
+          <div class="pm-box">
+            <label>Private Message</label>
+            <select id="pmTarget"></select>
+            <div class="pm-input">
+              <input id="pmInput" type="text" placeholder="Message" />
+              <button id="pmSend" class="ghost-btn">Send</button>
+            </div>
+            <div id="pmLog" class="pm-log"></div>
+          </div>
+        </div>
+
+        <div class="panel-block">
+          <h3>Game Rooms</h3>
+          <div id="roomList" class="list"></div>
+        </div>
+      </section>
+    </div>
+  </div>
+
+  <div id="room" class="screen" style="display: none;">
+    <div class="room-grid">
+
+      <!-- Single persistent left panel -->
+      <aside id="roomPanel" class="panel room-panel">
+
+        <!-- Always: room info & actions -->
+        <div class="room-info-block">
+          <div class="room-title">Room <span id="roomLabel">--</span></div>
+          <div class="room-meta">
+            <span id="roomRole">Spectator</span>
+            <span id="roomMembers">0 players</span>
+          </div>
+        </div>
+        <div class="room-actions-block">
+          <select id="inviteTarget"></select>
+          <div class="room-actions-row">
+            <button id="inviteSend" class="ghost-btn">Invite</button>
+            <button id="leaveRoomBtn" class="primary-btn">Leave Room</button>
+          </div>
+        </div>
+
+        <!-- Back button: shown in game states, hidden in room menu -->
+        <button id="backToMenuBtn" class="panel-back-btn" style="display:none;">← Room Menu</button>
+
+        <!-- SECTION: Room Menu -->
+        <div id="sectionRoomMenu">
+          <h3 class="panel-section-title">Game Options</h3>
+          <div class="panel-buttons">
+            <button class="panel-btn" id="menuRandomGoban">隨機棋盤<br><span>Play at Random Goban</span></button>
+            <button class="panel-btn" id="menuPresetGoban">從預設棋盤中選擇<br><span>Choose from Preset Gobans</span></button>
+            <button class="panel-btn" id="menuDesignGoban">設計自己的棋盤<br><span>Design Your Own Goban</span></button>
+            <button class="panel-btn" id="menuLoadGoban">載入棋盤<br><span>Load Goban</span></button>
+            <button class="panel-btn" id="menuGameReview">觀看對局記錄<br><span>Review Game Records</span></button>
+            <button class="panel-btn" id="menuSettings">設定<br><span>Settings</span></button>
+          </div>
+          <div class="panel-aux">
+            <button id="saveRecordBtn" class="ghost-btn">Save Record Online</button>
+            <button id="loadRecordBtn" class="ghost-btn">Load Saved Record</button>
+          </div>
+        </div>
+
+        <!-- SECTION: Random Goban Generation -->
+        <div id="sectionRandom" style="display:none;">
+          <h3 class="panel-section-title">Random Goban</h3>
+          <div id="randomStatus" class="panel-status">Generating goban...</div>
+          <div class="panel-buttons">
+            <button id="regenerateBtn" class="panel-btn" style="display:none;">Generate Another</button>
+            <button id="acceptRandomBtn" class="panel-btn accent" style="display:none;">Accept &amp; Play</button>
+          </div>
+        </div>
+
+        <!-- SECTION: Editor Mode -->
+        <div id="sectionEdit" style="display:none;">
+          <h3 class="panel-section-title">Editor Mode</h3>
+          <div class="panel-buttons">
+            <button id="moveModeBtn" class="panel-btn">Move Vertex [v]</button>
+            <button id="deleteEdgeModeBtn" class="panel-btn">Delete Edge [e]</button>
+            <button id="selectModeBtn" class="panel-btn">Select [s]</button>
+          </div>
+          <div class="panel-info">Goban Size</div>
+          <div class="panel-row">
+            <button id="sizeBtn6" class="panel-btn-sm">6</button>
+            <button id="sizeBtn8" class="panel-btn-sm">8</button>
+            <button id="sizeBtn10" class="panel-btn-sm">10</button>
+          </div>
+          <div class="panel-info">Mode: <span id="mode">move-vertex</span></div>
+          <div class="panel-info">Hover: <span id="hover">none</span></div>
+          <div class="panel-info">Vertices: <span id="vertexCount">0</span> · Tris: <span id="triCount">0</span> · Quads: <span id="quadCount">0</span></div>
+          <div class="panel-buttons">
+            <button id="undoBtn" class="panel-btn">Undo [Ctrl+Z]</button>
+            <button id="redoBtn" class="panel-btn">Redo [Ctrl+Shift+Z]</button>
+            <button id="autoRemoveBtn" class="panel-btn">Auto Remove Edges</button>
+            <button id="relaxBtn" class="panel-btn">Relax [r/R]</button>
+            <button id="saveBtn" class="panel-btn">Save Goban</button>
+            <button id="loadBtn" class="panel-btn">Load Goban</button>
+            <span id="saveLoadStatus" class="panel-status"></span>
+            <span id="undoStatus" class="panel-status"></span>
+            <span id="autoRemoveStatus" class="panel-status"></span>
+            <span id="relaxStatus" class="panel-status"></span>
+            <button id="playBtn" class="panel-btn accent">Play Go [p/P]</button>
+          </div>
+        </div>
+
+        <!-- SECTION: Play Mode -->
+        <div id="sectionPlay" style="display:none;">
+          <h3 class="panel-section-title">Play Mode</h3>
+          <div class="panel-info">Turn: <strong><span id="gameTurn">Black</span></strong></div>
+          <div class="panel-info">Captured — Black: <span id="capBlack">0</span> · White: <span id="capWhite">0</span></div>
+          <span id="gameInfo"></span>
+          <div class="panel-buttons">
+            <button id="gameUndoBtn" class="panel-btn">Undo Move</button>
+            <button id="gameRedoBtn" class="panel-btn">Redo Move</button>
+            <span id="gameUndoStatus" class="panel-status"></span>
+            <button id="passBtn" class="panel-btn">Pass</button>
+            <button id="aiMoveBtn" class="panel-btn">AI Move</button>
+            <button id="toggleIndicesBtn" class="panel-btn">Show Stone Indices</button>
+            <button id="scoreBtn" class="panel-btn">Score (Tromp-Taylor)</button>
+            <div class="panel-info">Black: <span id="scoreBlack">0</span> · White (+7.5): <span id="scoreWhite">0</span> · Neutral: <span id="scoreNeutral">0</span></div>
+            <button id="saveGameBtn" class="panel-btn">Save Game</button>
+            <button id="loadGameBtn" class="panel-btn">Load Game</button>
+            <button id="loadGameReviewBtn" class="panel-btn">Load Game Review</button>
+            <span id="gameLoadStatus" class="panel-status"></span>
+          </div>
+          <div id="gameStatusRow" style="display:none;" class="panel-alert"><span id="gameStatus"></span></div>
+          <div id="deadStoneRow" style="display:none;" class="panel-info" style="color:#ff8800;">
+            Click stones to mark dead. <button id="finishMarkingBtn" class="panel-btn">Finish Marking</button>
+          </div>
+          <div id="resultRow" style="display:none;" class="panel-result"><span id="gameResult"></span></div>
+          <div class="panel-info small">Click a point to place stones. [Ctrl+Z] undo.</div>
+        </div>
+
+        <!-- Always: room chat -->
+        <div class="room-chat-block">
+          <h3 class="panel-section-title">Room Chat</h3>
+          <div id="roomChatLog" class="chat-log small-log"></div>
+          <div class="chat-input">
+            <input id="roomChatInput" type="text" placeholder="Message the room..." />
+            <button id="roomChatSend" class="primary-btn">Send</button>
+          </div>
+        </div>
+
+      </aside>
+
+      <section class="room-stage">
+        <div id="roomPlaceholder" class="room-placeholder">
+          <h2>Pick a mode from the room menu</h2>
+          <p>Once a board is selected, the room will sync moves for everyone.</p>
+        </div>
+        <main id="app" style="display: none;"></main>
+      </section>
+    </div>
+  </div>
+
   <div id="presetMenu" style="display: none;">
     <h1>Choose a Preset Goban</h1>
     <div class="preset-options">
-       <button class="preset-btn" data-preset="shumi">須弥 (Shumi - Mount Sumeru)</button>
-       <button class="preset-btn" data-preset="shumi_large">須弥大 (Shumi Large)</button>
-       <!-- Shumi.json -->
+      <button class="preset-btn" data-preset="shumi">須弥 (Shumi - Mount Sumeru)</button>
+      <button class="preset-btn" data-preset="shumi_large">須弥大 (Shumi Large)</button>
       <button class="preset-btn" data-preset="yugen">幽玄 (Yugen - Deep Mystery)</button>
       <button class="preset-btn" data-preset="hoshikage">星影 (Hoshikage - Star Shadow)</button>
       <button class="preset-btn" data-preset="hoshikuzu">星屑 (Hoshikuzu - Stardust)</button>
       <button class="preset-btn" data-preset="enten">演天 (Enten - Celestial Deduction)</button>
       <button class="preset-btn" data-preset="kimon">奇门 (Kimon - Mystic Gates)</button>
-      <!-- kimon.json -->
       <button class="preset-btn" data-preset="jingan">陣眼 (Jin-gan - Nexus of the Array)</button>
-      <!-- Jin-gan_relaxed.json -->
-
     </div>
-    <button id="backToMenuFromPreset">Back to Menu</button>
+    <button id="backToMenuFromPreset">Back to Room Menu</button>
   </div>
 
-  <!-- Editor/Game Screen -->
-  <main id="app" style="display: none;">
-    <div id="ui">
-      <h1>Hex Goban</h1>
-      <div class="row">
-        <button id="backToMenuBtn">Back to Menu</button>
-      </div>
-
-      <div id="uiRandom" style="display: none;">
-        <div class="row"><strong>Random Goban Generation</strong></div>
-        <div class="row" id="randomStatus">Generating goban...</div>
-        <button id="regenerateBtn" style="display: none;">Generate Another</button>
-        <button id="acceptRandomBtn" style="display: none;">Accept & Play</button>
-      </div>
-
-      <div id="uiEdit" style="display: none;">
-        <div class="row"><strong>Editor Mode</strong></div>
-        <div class="row">
-          <button id="moveModeBtn">Move Vertex [v]</button>
-          <button id="deleteEdgeModeBtn">Delete Edge [e]</button>
-          <button id="selectModeBtn">Select [s]</button>
-        </div>
-        <div class="row"><strong>Goban Size</strong></div>
-        <div class="row" style="display: flex; gap: 4px;">
-          <button id="sizeBtn6" style="flex: 1;">6</button>
-          <button id="sizeBtn8" style="flex: 1;">8</button>
-          <button id="sizeBtn10" style="flex: 1;">10</button>
-        </div>
-        <div class="row">Current: <span id="mode">move-vertex</span></div>
-        <div class="row">Hover: <span id="hover">none</span></div>
-        <div class="row">Vertices: <span id="vertexCount">0</span> · Triangles: <span id="triCount">0</span> · Quads: <span id="quadCount">0</span></div>
-        <div class="row">
-          <button id="undoBtn">Undo [Ctrl+Z]</button>
-          <button id="redoBtn">Redo [Ctrl+Shift+Z]</button>
-          <span id="undoStatus"></span>
-        </div>
-        <div class="row">
-          <button id="autoRemoveBtn">Auto Remove Edges</button>
-          <span id="autoRemoveStatus"></span>
-        </div>
-        <div class="row">
-          <button id="relaxBtn">Relax [r/R]</button>
-          <span id="relaxStatus"></span>
-        </div>
-        <div class="row">
-          <button id="saveBtn">Save Goban</button>
-          <button id="loadBtn">Load Goban</button>
-          <span id="saveLoadStatus"></span>
-        </div>
-        <div class="row">
-          <button id="playBtn">Play Go [p/P]</button>
-        </div>
-        <div class="row">Tip: Drag vertices to move · Click edge midpoint to delete</div>
-      </div>
-
-      <div id="uiPlay" style="display: none;">
-        <div class="row"><strong>Play Mode</strong></div>
-        <div class="row">Turn: <span id="gameTurn">Black</span></div>
-        <div class="row">Captured — Black: <span id="capBlack">0</span> · White: <span id="capWhite">0</span></div>
-        <div class="row">
-          <button id="gameUndoBtn">Undo Move</button>
-          <button id="gameRedoBtn">Redo Move</button>
-          <span id="gameUndoStatus"></span>
-        </div>
-        <div class="row">
-          <button id="saveGameBtn">Save Game</button>
-          <button id="loadGameBtn">Load Game</button>
-          <button id="loadGameReviewBtn">Load Game Review</button>
-          <span id="gameLoadStatus"></span>
-        </div>
-        <div class="row">
-          <button id="toggleIndicesBtn">Show Stone Indices</button>
-          <button id="passBtn">Pass</button>
-          <button id="aiMoveBtn">AI Move</button>
-        </div>
-        <div class="row" id="gameStatusRow" style="display: none; font-weight: bold; font-size: 18px; color: #ff4444; padding: 8px 0;">
-          <span id="gameStatus"></span>
-        </div>
-        <div class="row" id="deadStoneRow" style="display: none; font-weight: bold; color: #ff8800;">
-          Click stones to mark dead groups. <button id="finishMarkingBtn" style="display: inline;">Finish Marking</button>
-        </div>
-        <div class="row">
-          <button id="scoreBtn">Score (Tromp-Taylor)</button>
-        </div>
-        <div class="row" style="font-size: 14px;">
-          <span>Black: <span id="scoreBlack">0</span> · White (+7.5): <span id="scoreWhite">0</span> · Neutral: <span id="scoreNeutral">0</span></span>
-        </div>
-        <div class="row" id="resultRow" style="display: none; font-weight: bold; font-size: 20px; padding: 10px; background: rgba(255,255,255,0.15); border-radius: 8px; margin: 8px 0;">
-          <span id="gameResult"></span>
-        </div>
-        <div class="row">Click a point to place stones. [Ctrl+Z] undo / [Ctrl+Shift+Z] redo moves.</div>
-      </div>
-    </div>
-  </main>
-
-  <!-- Game Review Modal -->
   <div id="gameReviewModal" style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.7); z-index: 1000; overflow-y: auto; padding: 20px;">
     <div style="background: #2a2a2a; color: #e0e0e0; padding: 20px; border-radius: 8px; max-width: 1000px; margin: 20px auto; max-height: 90vh; overflow-y: auto;">
       <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
@@ -145,7 +260,6 @@
       </div>
       
       <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px;">
-        <!-- Left side: Game list -->
         <div>
           <h3>Available Games</h3>
           <div id="gameReviewList" style="border: 1px solid #444; padding: 10px; border-radius: 4px; max-height: 400px; overflow-y: auto;">
@@ -153,7 +267,6 @@
           </div>
         </div>
         
-        <!-- Right side: Game details -->
         <div>
           <h3>Game Details</h3>
           <div id="gameReviewDetails" style="border: 1px solid #444; padding: 15px; border-radius: 4px;">
@@ -162,7 +275,6 @@
         </div>
       </div>
       
-      <!-- Playback controls -->
       <div id="gameReviewPlayback" style="display: none; margin-top: 20px; padding-top: 20px; border-top: 1px solid #444;">
         <h3>Select game to load and view on board</h3>
         <div style="display: flex; gap: 10px; margin-bottom: 10px; align-items: center;">
@@ -187,6 +299,8 @@
     </div>
   </div>
 
+  <script src="/socket.io/socket.io.js"></script>
+  <script src="multiplayer.js"></script>
   <script src="common.js"></script>
   <script src="mcts.js"></script>
   <script src="ai_player.js"></script>
