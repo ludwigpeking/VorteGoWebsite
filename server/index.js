@@ -204,10 +204,11 @@ function createRoom(name, socket, user) {
     name,
     hostId: socket.id,
     hostName,
-    players: [socket.id, null],
+    players: [null, null],   // filled by joinRoom; [0]=owner(black), [1]=opponent
     spectators: new Set(),
     count: 1,
     gameState: null,
+    rules: null,             // set by room:setRules
   };
   rooms.set(roomId, room);
   joinRoom(roomId, socket, user, true);
@@ -247,6 +248,14 @@ function joinRoom(roomId, socket, user, isHost = false) {
     isHost: isRoomHost,
     count: room.count,
   });
+
+  // Send existing rules (if set) so late-joiners know their color
+  if (room.rules) {
+    const { komi, colorMode } = room.rules;
+    const ownerColor = colorMode === 'owner-white' ? 'white' : colorMode === 'study' ? null : 'black';
+    const opponentColor = colorMode === 'owner-white' ? 'black' : colorMode === 'study' ? null : 'white';
+    socket.emit('room:rules', { komi, colorMode, ownerColor, opponentColor });
+  }
 
   if (room.gameState) {
     socket.emit('room:state', { roomId: room.id, state: room.gameState });
@@ -349,6 +358,18 @@ io.on('connection', (socket) => {
     });
   });
 
+  socket.on('room:setRules', (payload) => {
+    const client = onlineUsers.get(socket.id);
+    if (!client || !client.roomId) return;
+    const room = rooms.get(client.roomId);
+    if (!room || room.hostId !== socket.id) return; // only host can set rules
+    const { komi = 7.5, colorMode = 'owner-black' } = payload || {};
+    room.rules = { komi, colorMode };
+    const ownerColor = colorMode === 'owner-white' ? 'white' : colorMode === 'study' ? null : 'black';
+    const opponentColor = colorMode === 'owner-white' ? 'black' : colorMode === 'study' ? null : 'white';
+    io.to(room.id).emit('room:rules', { komi, colorMode, ownerColor, opponentColor });
+  });
+
   socket.on('room:message', (payload) => {
     if (!payload || !payload.text) return;
     const client = onlineUsers.get(socket.id);
@@ -363,7 +384,10 @@ io.on('connection', (socket) => {
   socket.on('game:state', (payload) => {
     const room = rooms.get(payload?.roomId);
     if (!room || !payload?.state) return;
+    // Store latest state so late-joining players receive it via room:state in joinRoom
     room.gameState = payload.state;
+    // Broadcast to others so they receive the initial board setup
+    socket.to(room.id).emit('room:state', { roomId: room.id, state: room.gameState });
   });
 
   socket.on('game:move', (payload) => {

@@ -10,6 +10,8 @@ const multiplayerState = {
   isHost: false,
   canMove: false,
   memberCount: 0,
+  isOwner: false,
+  colorMode: null,
 };
 
 const dom = {};
@@ -206,6 +208,7 @@ function connectSocket() {
   multiplayerState.socket.on('room:left', onRoomLeft);
   multiplayerState.socket.on('room:members', onRoomMembers);
   multiplayerState.socket.on('room:invite', onRoomInvite);
+  multiplayerState.socket.on('room:rules', onRoomRules);
   multiplayerState.socket.on('room:state', onRoomState);
   multiplayerState.socket.on('game:move', onGameMove);
 }
@@ -300,11 +303,20 @@ function onRoomJoined(payload) {
   multiplayerState.role = payload.role;
   multiplayerState.color = payload.color;
   multiplayerState.isHost = payload.isHost;
+  multiplayerState.isOwner = payload.isHost;
   updateRoomUI(payload);
+  applyOwnerUI(payload.isHost);
   showRoom();
   dom.roomPlaceholder.style.display = 'flex';
   dom.app.style.display = 'none';
   updateMultiplayerState();
+}
+
+function applyOwnerUI(isOwner) {
+  const ownerOptions = document.getElementById('ownerGameOptions');
+  const nonOwnerWaiting = document.getElementById('nonOwnerWaiting');
+  if (ownerOptions) ownerOptions.style.display = isOwner ? 'block' : 'none';
+  if (nonOwnerWaiting) nonOwnerWaiting.style.display = isOwner ? 'none' : 'block';
 }
 
 function onRoomLeft() {
@@ -313,7 +325,11 @@ function onRoomLeft() {
   multiplayerState.role = 'spectator';
   multiplayerState.color = null;
   multiplayerState.isHost = false;
+  multiplayerState.isOwner = false;
+  multiplayerState.colorMode = null;
   multiplayerState.memberCount = 0;
+  multiplayerState.gameStarted = false;
+  applyOwnerUI(false);
   updateMultiplayerState();
   showLobby();
 }
@@ -322,6 +338,7 @@ function onRoomMembers(payload) {
   if (!payload || payload.roomId !== multiplayerState.roomId) return;
   multiplayerState.memberCount = payload.count;
   dom.roomMembers.textContent = `${payload.count} players`;
+  updateMultiplayerState(); // re-evaluate canMove now that member count changed
 }
 
 function onRoomInvite(payload) {
@@ -334,6 +351,11 @@ function onRoomInvite(payload) {
 function onRoomState(payload) {
   if (!payload || !payload.state) return;
   if (window.applyGameSnapshot) {
+    // Skip only if the multiplayer game is already actively running.
+    // Using a gameStarted flag rather than mode, so opponents coming from a local game
+    // (where mode may already be 'play') still receive the initial board.
+    if (multiplayerState.gameStarted && window.getCurrentMode?.() === 'play') return;
+    multiplayerState.gameStarted = true;
     window.applyGameSnapshot(payload.state);
     showGameStage();
   }
@@ -347,6 +369,31 @@ function onGameMove(payload) {
   if (payload.move.type === 'pass' && window.applyRemotePass) {
     window.applyRemotePass();
   }
+  // Update UI and redraw after applying the remote move
+  if (window.updateGameUIRemote) window.updateGameUIRemote();
+}
+
+function onRoomRules(payload) {
+  if (!payload) return;
+  // New rules = new game session; reset gameStarted so room:state is accepted fresh.
+  multiplayerState.gameStarted = false;
+  multiplayerState.colorMode = payload.colorMode;
+  const isSpectator = (multiplayerState.role || '').toLowerCase() === 'spectator';
+  // Spectators never get a playing color
+  if (isSpectator) {
+    multiplayerState.color = null;
+  } else if (payload.colorMode === 'study') {
+    // Study mode: owner and opponent can both play freely — mark as 'study'
+    multiplayerState.color = 'study';
+  } else {
+    multiplayerState.color = multiplayerState.isOwner
+      ? payload.ownerColor
+      : payload.opponentColor;
+  }
+  updateMultiplayerState();
+  // Update komi display
+  const komiEl = document.getElementById('komiDisplay');
+  if (komiEl) komiEl.textContent = payload.komi;
 }
 
 function updateRoomUI(payload) {
@@ -377,7 +424,10 @@ function updateMultiplayerState() {
     role: multiplayerState.role,
     color: multiplayerState.color,
     isHost: multiplayerState.isHost,
+    isOwner: multiplayerState.isOwner,
+    colorMode: multiplayerState.colorMode,
     canMove: multiplayerState.canMove,
+    memberCount: multiplayerState.memberCount,
   };
   if (window.multiplayerUpdateTurn) {
     window.multiplayerUpdateTurn();
@@ -541,7 +591,8 @@ window.multiplayerSendMove = (vid, color) => {
     roomId: multiplayerState.roomId,
     move: { type: 'place', vid, color },
   });
-  syncGameState();
+  // Do not syncGameState on every move — use incremental game:move only.
+  // syncGameState is called separately for initial board setup.
 };
 
 window.multiplayerSendPass = () => {
@@ -550,19 +601,47 @@ window.multiplayerSendPass = () => {
     roomId: multiplayerState.roomId,
     move: { type: 'pass' },
   });
-  syncGameState();
 };
 
 window.multiplayerSyncState = syncGameState;
 
+window.multiplayerSendRules = (rules) => {
+  if (!multiplayerState.roomId) return;
+  const { komi = 7.5, colorMode = 'owner-black' } = rules || {};
+  // Apply owner's color locally right away — don't wait for server round-trip.
+  // This ensures multiplayerUpdateTurn() has the correct color when startFn runs.
+  multiplayerState.colorMode = colorMode;
+  const ownerColor = colorMode === 'owner-white' ? 'white' : colorMode === 'study' ? null : 'black';
+  multiplayerState.color = colorMode === 'study' ? 'study' : ownerColor;
+  updateMultiplayerState();
+  multiplayerState.socket.emit('room:setRules', rules);
+};
+
 window.multiplayerUpdateTurn = () => {
   if (!window.multiplayerState || !window.getCurrentPlayer) return;
   const currentPlayer = window.getCurrentPlayer();
-  // Only enforce color restriction when there are 2+ players in the room
   const hasOpponent = (window.multiplayerState.memberCount || 0) >= 2;
-  const canMove = (window.multiplayerState.color && hasOpponent)
-    ? window.multiplayerState.color === currentPlayer
-    : true;
+  const isSpectator = (window.multiplayerState.role || '').toLowerCase() === 'spectator';
+  let canMove;
+  if (!window.multiplayerState.active) {
+    // Local play — always can move
+    canMove = true;
+  } else if (isSpectator) {
+    // Spectators can never place stones
+    canMove = false;
+  } else if (window.multiplayerState.color === 'study') {
+    // Study mode — both players can move freely
+    canMove = true;
+  } else if (!window.multiplayerState.color) {
+    // No color assigned yet (before rules set) — allow free play while solo
+    canMove = !hasOpponent;
+  } else if (hasOpponent) {
+    // Competitive mode with opponent present — enforce turn order
+    canMove = window.multiplayerState.color === currentPlayer;
+  } else {
+    // Solo in room waiting for opponent — allow free play
+    canMove = true;
+  }
   multiplayerState.canMove = canMove;
   window.multiplayerState.canMove = canMove;
 };

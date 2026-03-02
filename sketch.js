@@ -47,6 +47,7 @@ let autoRemoveRetries = 0;
 let autoRemoveMaxRetries = 50;
 let autoRemoveStartSnapshot = null;
 let saveLoadStatusEl = null;
+let komi = 7.5; // current game komi
 
 let canvasCreated = false;
 // Keep canvas sized to the viewport
@@ -125,6 +126,39 @@ function showPanelSection(section) {
   setDisplay('backToMenuBtn',   section !== 'roomMenu' ? 'block' : 'none');
 }
 
+// Show the game rules dialog before starting a multiplayer game.
+// If not in a room or not the owner, calls startFn immediately with current defaults.
+function showRulesDialog(startFn) {
+  if (!window.multiplayerState?.active || !window.multiplayerState?.isOwner) {
+    startFn({ komi, colorMode: 'owner-black' });
+    return;
+  }
+  const modal = document.getElementById('gameRulesModal');
+  if (!modal) { startFn({ komi, colorMode: 'owner-black' }); return; }
+
+  // Pre-fill with current komi
+  const komiInput = document.getElementById('komiInput');
+  if (komiInput) komiInput.value = komi;
+
+  modal.style.display = 'flex';
+
+  const close = () => { modal.style.display = 'none'; };
+  document.getElementById('gameRulesClose').onclick = close;
+
+  document.getElementById('gameRulesConfirm').onclick = () => {
+    const k = parseFloat(komiInput ? komiInput.value : 7.5);
+    const colorMode = document.getElementById('colorModeSelect').value;
+    komi = isNaN(k) ? 7.5 : Math.round(k * 2) / 2; // snap to 0.5
+    close();
+    // Update komi label
+    const komiDisplay = document.getElementById('komiDisplay');
+    if (komiDisplay) komiDisplay.textContent = komi;
+    // Send rules to room
+    if (window.multiplayerSendRules) window.multiplayerSendRules({ komi, colorMode });
+    startFn({ komi, colorMode });
+  };
+}
+
 function showMainMenu() {
   document.getElementById('presetMenu').style.display = 'none';
   document.getElementById('app').style.display = 'none';
@@ -193,18 +227,20 @@ function generateRandomGoban() {
 }
 
 function acceptRandomGoban() {
-  mode = 'play';
-  gameStones.clear();
-  currentPlayer = 'black';
-  capturedBlack = 0;
-  capturedWhite = 0;
-  initGameHistory();
-  updateGameUI();
-  showPanelSection('play');
-  currentScreen = 'play';
-  setupPlayButtons();
-  redraw();
-  if (window.multiplayerSyncState) window.multiplayerSyncState();
+  showRulesDialog(() => {
+    mode = 'play';
+    gameStones.clear();
+    currentPlayer = 'black';
+    capturedBlack = 0;
+    capturedWhite = 0;
+    initGameHistory();
+    updateGameUI();
+    showPanelSection('play');
+    currentScreen = 'play';
+    setupPlayButtons();
+    redraw();
+    if (window.multiplayerSyncState) window.multiplayerSyncState();
+  });
 }
 
 function startDesignMode() {
@@ -263,18 +299,20 @@ function loadPresetGoban(presetName) {
       restoreGoban(data);
       // Center and fit the loaded goban to canvas
       centerAndFitGoban();
-      // Start play mode immediately
-      mode = 'play';
-      gameStones.clear();
-      currentPlayer = 'black';
-      capturedBlack = 0;
-      capturedWhite = 0;
-      initGameHistory();
-      showPanelSection('play');
-      setupPlayButtons();
-      updateGameUI();
-      redraw();
-      if (window.multiplayerSyncState) window.multiplayerSyncState();
+      // Show rules dialog then start play mode
+      showRulesDialog(() => {
+        mode = 'play';
+        gameStones.clear();
+        currentPlayer = 'black';
+        capturedBlack = 0;
+        capturedWhite = 0;
+        initGameHistory();
+        showPanelSection('play');
+        setupPlayButtons();
+        updateGameUI();
+        redraw();
+        if (window.multiplayerSyncState) window.multiplayerSyncState();
+      });
     })
     .catch(err => {
       alert(`Error loading preset: ${err.message}`);
@@ -1409,19 +1447,24 @@ function togglePlayMode() {
   if (mode === 'play') {
     mode = 'move-vertex';
     showPanelSection('edit');
+    updateUiMode();
+    updateGameUI();
+    redraw();
   } else {
-    mode = 'play';
-    gameStones.clear();
-    currentPlayer = 'black';
-    capturedBlack = 0;
-    capturedWhite = 0;
-    initGameHistory();
-    showPanelSection('play');
-    setupPlayButtons();
+    showRulesDialog(() => {
+      mode = 'play';
+      gameStones.clear();
+      currentPlayer = 'black';
+      capturedBlack = 0;
+      capturedWhite = 0;
+      initGameHistory();
+      showPanelSection('play');
+      setupPlayButtons();
+      updateUiMode();
+      updateGameUI();
+      redraw();
+    });
   }
-  updateUiMode();
-  updateGameUI();
-  redraw();
 }
 
 // Initialize game history with a baseline snapshot (empty board)
@@ -2733,6 +2776,7 @@ function renderScore(score) {
 }
 
 window.getCurrentPlayer = () => currentPlayer;
+window.getCurrentMode = () => mode;
 
 window.getGameSnapshot = () => ({
   version: 1,
@@ -2769,6 +2813,10 @@ window.getGameSnapshot = () => ({
 });
 
 window.applyGameSnapshot = (data) => {
+  if (!canvasCreated) ensureCanvas();
+  document.getElementById('app').style.display = 'block';
+  const placeholder = document.getElementById('roomPlaceholder');
+  if (placeholder) placeholder.style.display = 'none';
   restoreGoban(data);
   restoreGameFromData(data);
   mode = 'play';
@@ -2792,4 +2840,10 @@ window.applyRemoteMove = (move) => {
 
 window.applyRemotePass = () => {
   handlePass(true);
+};
+
+// Called by multiplayer.js after every incoming game:move to refresh UI and board
+window.updateGameUIRemote = () => {
+  updateGameUI();
+  redraw();
 };

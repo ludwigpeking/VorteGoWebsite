@@ -131,17 +131,25 @@
         <!-- SECTION: Room Menu -->
         <div id="sectionRoomMenu">
           <h3 class="panel-section-title">Game Options</h3>
-          <div class="panel-buttons">
-            <button class="panel-btn" id="menuRandomGoban">隨機棋盤<br><span>Play at Random Goban</span></button>
-            <button class="panel-btn" id="menuPresetGoban">從預設棋盤中選擇<br><span>Choose from Preset Gobans</span></button>
-            <button class="panel-btn" id="menuDesignGoban">設計自己的棋盤<br><span>Design Your Own Goban</span></button>
-            <button class="panel-btn" id="menuLoadGoban">載入棋盤<br><span>Load Goban</span></button>
-            <button class="panel-btn" id="menuGameReview">觀看對局記錄<br><span>Review Game Records</span></button>
-            <button class="panel-btn" id="menuSettings">設定<br><span>Settings</span></button>
+          <!-- shown only to room owner -->
+          <div id="ownerGameOptions">
+            <div class="panel-buttons">
+              <button class="panel-btn" id="menuRandomGoban">隨機棋盤<br><span>Play at Random Goban</span></button>
+              <button class="panel-btn" id="menuPresetGoban">從預設棋盤中選擇<br><span>Choose from Preset Gobans</span></button>
+              <button class="panel-btn" id="menuDesignGoban">設計自己的棋盤<br><span>Design Your Own Goban</span></button>
+              <button class="panel-btn" id="menuLoadGoban">載入棋盤<br><span>Load Goban</span></button>
+              <button class="panel-btn" id="menuGameReview">觀看對局記錄<br><span>Review Game Records</span></button>
+              <button class="panel-btn" id="menuSettings">設定<br><span>Settings</span></button>
+            </div>
+            <div class="panel-aux">
+              <button id="saveRecordBtn" class="ghost-btn">Save Record Online</button>
+              <button id="loadRecordBtn" class="ghost-btn">Load Saved Record</button>
+            </div>
           </div>
-          <div class="panel-aux">
-            <button id="saveRecordBtn" class="ghost-btn">Save Record Online</button>
-            <button id="loadRecordBtn" class="ghost-btn">Load Saved Record</button>
+          <!-- shown only to non-owner members -->
+          <div id="nonOwnerWaiting" style="display:none;" class="panel-info">
+            Waiting for the host to set up the game.
+            <br><span style="opacity:.6;">You'll receive the board automatically once they start.</span>
           </div>
         </div>
 
@@ -201,7 +209,7 @@
             <button id="aiMoveBtn" class="panel-btn">AI Move</button>
             <button id="toggleIndicesBtn" class="panel-btn">Show Stone Indices</button>
             <button id="scoreBtn" class="panel-btn">Score (Tromp-Taylor)</button>
-            <div class="panel-info">Black: <span id="scoreBlack">0</span> · White (+7.5): <span id="scoreWhite">0</span> · Neutral: <span id="scoreNeutral">0</span></div>
+            <div class="panel-info">Black: <span id="scoreBlack">0</span> · White (+<span id="komiDisplay">7.5</span>): <span id="scoreWhite">0</span> · Neutral: <span id="scoreNeutral">0</span></div>
             <button id="saveGameBtn" class="panel-btn">Save Game</button>
             <button id="loadGameBtn" class="panel-btn">Load Game</button>
             <button id="loadGameReviewBtn" class="panel-btn">Load Game Review</button>
@@ -295,6 +303,27 @@
         <div id="currentBoardState" style="margin-top: 15px; padding: 10px; background: #1a1a1a; border-radius: 4px; font-size: 13px;">
           <div style="color: #888;">Select a game above to load it</div>
         </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Game Rules Modal -->
+  <div id="gameRulesModal" class="modal" style="display:none;">
+    <div class="modal-card">
+      <div class="modal-header">
+        <h3 style="margin:0;font-family:'Fraunces',serif;">Game Rules</h3>
+        <button id="gameRulesClose" class="icon-btn">✕</button>
+      </div>
+      <div class="auth-form" style="margin-top:14px;">
+        <label style="font-size:12px;opacity:.65;">Komi — White's compensation points</label>
+        <input id="komiInput" type="number" step="0.5" value="7.5" min="0" max="30" />
+        <label style="font-size:12px;opacity:.65;margin-top:10px;">Color Assignment</label>
+        <select id="colorModeSelect">
+          <option value="owner-black">You (owner) = ⚫ Black · Opponent = ⚪ White</option>
+          <option value="owner-white">You (owner) = ⚪ White · Opponent = ⚫ Black</option>
+          <option value="study">Study / Review — both players can move either color</option>
+        </select>
+        <button id="gameRulesConfirm" class="primary-btn" style="margin-top:18px;">Start Game</button>
       </div>
     </div>
   </div>
