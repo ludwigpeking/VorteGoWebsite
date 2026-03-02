@@ -369,6 +369,9 @@ function onGameMove(payload) {
   if (payload.move.type === 'pass' && window.applyRemotePass) {
     window.applyRemotePass();
   }
+  // Re-evaluate whose turn it is — currentPlayer has just flipped after the remote move.
+  // Without this the opponent's canMove stays false even when it becomes their turn.
+  if (window.multiplayerUpdateTurn) window.multiplayerUpdateTurn();
   // Update UI and redraw after applying the remote move
   if (window.updateGameUIRemote) window.updateGameUIRemote();
 }

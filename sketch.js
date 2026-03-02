@@ -527,6 +527,7 @@ function loadGame() {
           setupPlayButtons();
           updateGameUI();
           redraw();
+          if (window.multiplayerSyncState) window.multiplayerSyncState();
           if (saveLoadStatusEl) saveLoadStatusEl.textContent = 'Game loaded';
         } else {
           if (saveLoadStatusEl) saveLoadStatusEl.textContent = 'Not a game file';
@@ -561,7 +562,6 @@ function restoreGameFromData(data) {
     previousBoardState: snapshot.previousBoardState ? new Map(snapshot.previousBoardState) : null,
   }));
   gameUndoIndex = data.gameUndoIndex;
-  if (window.multiplayerSyncState) window.multiplayerSyncState();
 }
 
 function windowResized() {
@@ -2004,6 +2004,7 @@ function startLoadGoban() {
           showPanelSection('play');
           setupPlayButtons();
           updateGameUI();
+          if (window.multiplayerSyncState) window.multiplayerSyncState();
           if (saveLoadStatusEl) saveLoadStatusEl.textContent = 'Game loaded';
         } else {
           // Load as goban only
@@ -2047,6 +2048,7 @@ function loadGoban() {
           showPanelSection('play');
           setupPlayButtons();
           updateGameUI();
+          if (window.multiplayerSyncState) window.multiplayerSyncState();
           if (saveLoadStatusEl) saveLoadStatusEl.textContent = 'Game loaded';
         } else {
           // Load as goban only
