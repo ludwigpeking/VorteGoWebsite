@@ -566,7 +566,17 @@ function restoreGameFromData(data) {
 
 function windowResized() {
   if (canvasCreated) {
+    const oldCX = width / 2;
+    const oldCY = height / 2;
     ensureCanvas();
+    const dx = width / 2 - oldCX;
+    const dy = height / 2 - oldCY;
+    if ((dx !== 0 || dy !== 0) && vertices.length > 0) {
+      for (const v of vertices) {
+        v.x += dx;
+        v.y += dy;
+      }
+    }
     redraw();
   }
 }
@@ -802,6 +812,7 @@ function mousePressed() {
         // currentPlayer is the live JS variable, always up-to-date.
         allowed = !hasOpponent || ms.color === currentPlayer;
       }
+      console.log('[MP click] color:', ms.color, 'currentPlayer:', currentPlayer, 'memberCount:', ms.memberCount, 'hasOpponent:', hasOpponent, 'allowed:', allowed);
       if (!allowed) return;
     }
     if (markingDeadStones) {
@@ -1045,8 +1056,10 @@ function drawGobanBorder() {
   
   // Calculate offset outward from center
   const offset = spacing / 2;
-  const centerX = width / 2;
-  const centerY = height / 2;
+  // Derive the actual board center from the corner vertices themselves,
+  // so the outward direction stays correct even after window resize.
+  const centerX = cornerPoints.reduce((s, v) => s + v.x, 0) / cornerPoints.length;
+  const centerY = cornerPoints.reduce((s, v) => s + v.y, 0) / cornerPoints.length;
   
   // Create inner and outer corner points
   const corners = cornerPoints.map(v => {
@@ -2798,6 +2811,28 @@ function renderScore(score) {
 
 window.getCurrentPlayer = () => currentPlayer;
 window.getCurrentMode = () => mode;
+
+// Called by multiplayer.js when the player joins a new room, to clear any
+// leftover game state (panel section, scores, result rows) from a previous game.
+window.resetToRoomMenu = () => {
+  showPanelSection('roomMenu');
+  currentScreen = 'room-menu';
+  if (mode === 'play') {
+    mode = 'move-vertex';
+    gameStones.clear();
+    currentPlayer = 'black';
+    capturedBlack = 0;
+    capturedWhite = 0;
+  }
+  // Hide end-game UI rows that may still be visible from the previous game
+  const gameStatusRow = document.getElementById('gameStatusRow');
+  const deadStoneRow  = document.getElementById('deadStoneRow');
+  const resultRow     = document.getElementById('resultRow');
+  if (gameStatusRow) gameStatusRow.style.display = 'none';
+  if (deadStoneRow)  deadStoneRow.style.display  = 'none';
+  if (resultRow)     resultRow.style.display      = 'none';
+  noLoop();
+};
 
 window.getGameSnapshot = () => ({
   version: 1,

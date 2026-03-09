@@ -42,9 +42,42 @@
         </div>
         <label>Password</label>
         <input id="authPassword" type="password" autocomplete="current-password" />
+        <div id="forgotLinkRow" style="text-align:right; margin-top:-4px;">
+          <button type="button" id="forgotPasswordLink" class="forgot-link">Forgot password?</button>
+        </div>
         <button id="authSubmit" class="primary-btn" type="submit">Continue</button>
         <div id="authStatus" class="form-status"></div>
       </form>
+    </div>
+  </div>
+
+  <!-- Forgot password modal -->
+  <div id="forgotModal" class="modal" style="display: none;">
+    <div class="modal-card">
+      <div class="modal-header">
+        <h2>Reset Password</h2>
+        <button id="forgotModalClose" class="icon-btn">Close</button>
+      </div>
+      <p style="font-size:13px;margin:0 0 14px;opacity:.8;">
+        Enter the email address on your account and we'll send you a reset link.
+      </p>
+      <label>Email</label>
+      <input id="forgotEmail" type="email" autocomplete="email" style="margin-bottom:12px;" />
+      <button id="forgotSubmit" class="primary-btn" type="button">Send Reset Link</button>
+      <div id="forgotStatus" class="form-status"></div>
+    </div>
+  </div>
+
+  <!-- Reset password modal (shown when ?resetToken= is in the URL) -->
+  <div id="resetModal" class="modal" style="display: none;">
+    <div class="modal-card">
+      <div class="modal-header">
+        <h2>Choose New Password</h2>
+      </div>
+      <label>New Password</label>
+      <input id="resetPassword" type="password" autocomplete="new-password" style="margin-bottom:12px;" />
+      <button id="resetSubmit" class="primary-btn" type="button">Save New Password</button>
+      <div id="resetStatus" class="form-status"></div>
     </div>
   </div>
 
@@ -55,6 +88,19 @@
         <button id="recordModalClose" class="icon-btn">Close</button>
       </div>
       <div id="recordList" class="record-list"></div>
+    </div>
+  </div>
+
+  <div id="inviteModal" class="modal" style="display: none;">
+    <div class="modal-card">
+      <div class="modal-header">
+        <h2>Game Invitation</h2>
+      </div>
+      <p id="inviteModalMsg" style="margin: 0 0 18px;"></p>
+      <div style="display: flex; gap: 10px; justify-content: flex-end;">
+        <button id="inviteDecline" class="ghost-btn">Decline</button>
+        <button id="inviteAccept" class="primary-btn">Join</button>
+      </div>
     </div>
   </div>
 

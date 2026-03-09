@@ -1,10 +1,12 @@
 const path = require('path');
 const http = require('http');
+const crypto = require('crypto');
 const express = require('express');
 const cookieParser = require('cookie-parser');
 const cookie = require('cookie');
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
+const nodemailer = require('nodemailer');
 const { Server } = require('socket.io');
 const {
   createUser,
@@ -14,6 +16,10 @@ const {
   createGame,
   listGamesByUser,
   getGameById,
+  createPasswordReset,
+  getPasswordReset,
+  markPasswordResetUsed,
+  updateUserPassword,
 } = require('./db');
 
 const app = express();
@@ -23,6 +29,37 @@ const io = new Server(server);
 const PORT = process.env.PORT || 3000;
 const JWT_SECRET = process.env.JWT_SECRET || 'dev-secret-change';
 const TOKEN_COOKIE = 'vortego_token';
+const APP_URL = (process.env.APP_URL || `http://localhost:${PORT}`).replace(/\/$/, '');
+
+// Email transporter — configure via environment variables:
+//   SMTP_HOST, SMTP_PORT, SMTP_USER, SMTP_PASS, SMTP_FROM
+// If SMTP_USER is not set, falls back to an Ethereal test account (dev only).
+// The preview URL for each email is printed to the server console.
+let _transporter = null;
+let _smtpFrom = process.env.SMTP_FROM || process.env.SMTP_USER || 'noreply@vortego.app';
+
+async function getTransporter() {
+  if (_transporter) return _transporter;
+  if (process.env.SMTP_USER) {
+    _transporter = nodemailer.createTransport({
+      host: process.env.SMTP_HOST || 'smtp.gmail.com',
+      port: Number(process.env.SMTP_PORT) || 587,
+      secure: Number(process.env.SMTP_PORT) === 465,
+      auth: { user: process.env.SMTP_USER, pass: process.env.SMTP_PASS || '' },
+    });
+  } else {
+    // No credentials — create a free Ethereal catch-all inbox for local dev
+    const testAccount = await nodemailer.createTestAccount();
+    _transporter = nodemailer.createTransport({
+      host: 'smtp.ethereal.email',
+      port: 587,
+      auth: { user: testAccount.user, pass: testAccount.pass },
+    });
+    _smtpFrom = `VorteGo <${testAccount.user}>`;
+    console.log('📧  No SMTP credentials set — using Ethereal test inbox:', testAccount.user);
+  }
+  return _transporter;
+}
 
 app.use(express.json({ limit: '5mb' }));
 app.use(cookieParser());
@@ -113,6 +150,69 @@ app.post('/api/auth/logout', (req, res) => {
 app.get('/api/auth/me', (req, res) => {
   const user = getUserFromRequest(req);
   return res.json({ user: user ? sanitizeUser(user) : null });
+});
+
+app.post('/api/auth/forgot-password', async (req, res) => {
+  const { email } = req.body || {};
+  if (!email) return res.status(400).json({ message: 'Email required.' });
+
+  const user = getUserByEmail(email);
+  // Always respond 200 so we don't reveal whether an email is registered
+  if (!user) return res.json({ ok: true });
+
+  const token = crypto.randomBytes(32).toString('hex');
+  const expiresAt = new Date(Date.now() + 60 * 60 * 1000).toISOString(); // 1 hour
+  createPasswordReset({ userId: user.id, token, expiresAt });
+
+  const link = `${APP_URL}/?resetToken=${token}`;
+  try {
+    const transport = await getTransporter();
+    const info = await transport.sendMail({
+      from: _smtpFrom,
+      to: user.email,
+      subject: 'VorteGo — Reset your password',
+      html: `
+        <div style="font-family:sans-serif;max-width:480px;margin:auto;">
+          <h2 style="color:#f2b705;">VorteGo</h2>
+          <p>Hi <strong>${user.username}</strong>,</p>
+          <p>We received a request to reset your password. Click the button below to choose a new one.
+             This link is valid for <strong>1 hour</strong>.</p>
+          <p style="text-align:center;margin:32px 0;">
+            <a href="${link}"
+               style="background:#f2b705;color:#0d0f14;padding:12px 28px;border-radius:999px;
+                      text-decoration:none;font-weight:700;">Reset Password</a>
+          </p>
+          <p style="font-size:12px;color:#888;">
+            If you didn't request this, you can safely ignore this email.<br>
+            Link: ${link}
+          </p>
+        </div>`,
+    });
+    const preview = nodemailer.getTestMessageUrl(info);
+    if (preview) {
+      console.log(`📧  Password reset email preview (Ethereal): ${preview}`);
+    }
+  } catch (err) {
+    console.error('Failed to send reset email:', err.message);
+    // Still return ok — don't expose email/SMTP errors to the client
+  }
+
+  return res.json({ ok: true });
+});
+
+app.post('/api/auth/reset-password', (req, res) => {
+  const { token, password } = req.body || {};
+  if (!token || !password) return res.status(400).json({ message: 'Missing fields.' });
+  if (password.length < 6) return res.status(400).json({ message: 'Password must be at least 6 characters.' });
+
+  const reset = getPasswordReset(token);
+  if (!reset) return res.status(400).json({ message: 'Reset link is invalid or has expired.' });
+
+  const passwordHash = bcrypt.hashSync(password, 10);
+  updateUserPassword(reset.user_id, passwordHash);
+  markPasswordResetUsed(token);
+
+  return res.json({ ok: true });
 });
 
 app.get('/api/games', requireAuth, (req, res) => {

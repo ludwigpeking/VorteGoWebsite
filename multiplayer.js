@@ -51,9 +51,27 @@ function initDom() {
   dom.signupEmail = $('signupEmail');
   dom.authStatus = $('authStatus');
 
+  dom.forgotPasswordLink = $('forgotPasswordLink');
+  dom.forgotLinkRow = $('forgotLinkRow');
+  dom.forgotModal = $('forgotModal');
+  dom.forgotModalClose = $('forgotModalClose');
+  dom.forgotEmail = $('forgotEmail');
+  dom.forgotSubmit = $('forgotSubmit');
+  dom.forgotStatus = $('forgotStatus');
+
+  dom.resetModal = $('resetModal');
+  dom.resetPassword = $('resetPassword');
+  dom.resetSubmit = $('resetSubmit');
+  dom.resetStatus = $('resetStatus');
+
   dom.recordModal = $('recordModal');
   dom.recordModalClose = $('recordModalClose');
   dom.recordList = $('recordList');
+
+  dom.inviteModal = $('inviteModal');
+  dom.inviteModalMsg = $('inviteModalMsg');
+  dom.inviteAccept = $('inviteAccept');
+  dom.inviteDecline = $('inviteDecline');
 
   dom.createRoomBtn = $('createRoomBtn');
   dom.leaveRoomBtn = $('leaveRoomBtn');
@@ -125,17 +143,82 @@ function openAuthModal(mode) {
     dom.authTabSignup.classList.add('active');
     dom.authLoginFields.style.display = 'none';
     dom.authSignupFields.style.display = 'block';
+    dom.forgotLinkRow.style.display = 'none';
   } else {
     dom.authModalTitle.textContent = 'Welcome Back';
     dom.authTabSignup.classList.remove('active');
     dom.authTabLogin.classList.add('active');
     dom.authLoginFields.style.display = 'block';
     dom.authSignupFields.style.display = 'none';
+    dom.forgotLinkRow.style.display = 'block';
   }
 }
 
 function closeAuthModal() {
   dom.authModal.style.display = 'none';
+}
+
+function openForgotModal() {
+  dom.authModal.style.display = 'none';
+  dom.forgotEmail.value = '';
+  dom.forgotStatus.textContent = '';
+  dom.forgotModal.style.display = 'flex';
+}
+
+async function handleForgotSubmit() {
+  const email = dom.forgotEmail.value.trim();
+  if (!email) { dom.forgotStatus.textContent = 'Please enter your email.'; return; }
+  dom.forgotSubmit.disabled = true;
+  dom.forgotStatus.textContent = 'Sending…';
+  try {
+    await fetch('/api/auth/forgot-password', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email }),
+    });
+    dom.forgotStatus.textContent = 'If that email is registered, a reset link has been sent. Check your inbox.';
+    dom.forgotSubmit.disabled = false;
+  } catch {
+    dom.forgotStatus.textContent = 'Network error. Please try again.';
+    dom.forgotSubmit.disabled = false;
+  }
+}
+
+async function handleResetSubmit(token) {
+  const password = dom.resetPassword.value;
+  if (password.length < 6) { dom.resetStatus.textContent = 'Password must be at least 6 characters.'; return; }
+  dom.resetSubmit.disabled = true;
+  dom.resetStatus.textContent = 'Saving…';
+  try {
+    const res = await fetch('/api/auth/reset-password', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ token, password }),
+    });
+    const data = await res.json();
+    if (!res.ok) {
+      dom.resetStatus.textContent = data.message || 'Failed.';
+      dom.resetSubmit.disabled = false;
+      return;
+    }
+    dom.resetModal.style.display = 'none';
+    // Clean the token from the URL so a page refresh doesn't re-open the modal
+    window.history.replaceState({}, '', '/');
+    openAuthModal('login');
+  } catch {
+    dom.resetStatus.textContent = 'Network error. Please try again.';
+    dom.resetSubmit.disabled = false;
+  }
+}
+
+function checkResetToken() {
+  const params = new URLSearchParams(window.location.search);
+  const token = params.get('resetToken');
+  if (!token) return;
+  dom.resetPassword.value = '';
+  dom.resetStatus.textContent = '';
+  dom.resetModal.style.display = 'flex';
+  dom.resetSubmit.onclick = () => handleResetSubmit(token);
 }
 
 async function handleAuthSubmit(event) {
@@ -304,11 +387,16 @@ function onRoomJoined(payload) {
   multiplayerState.color = payload.color;
   multiplayerState.isHost = payload.isHost;
   multiplayerState.isOwner = payload.isHost;
+  // Set memberCount here so the opponent doesn't miss the room:members broadcast
+  // that was sent before room:joined (when roomId was still null on the client).
+  multiplayerState.memberCount = payload.count;
   updateRoomUI(payload);
   applyOwnerUI(payload.isHost);
   showRoom();
   dom.roomPlaceholder.style.display = 'flex';
   dom.app.style.display = 'none';
+  // Clear any leftover panel state from a previous game
+  if (window.resetToRoomMenu) window.resetToRoomMenu();
   updateMultiplayerState();
 }
 
@@ -342,10 +430,16 @@ function onRoomMembers(payload) {
 }
 
 function onRoomInvite(payload) {
-  const accept = confirm(`${payload.from} invited you to join ${payload.roomName}. Join now?`);
-  if (accept) {
+  dom.inviteModalMsg.textContent = `${payload.from} invited you to join "${payload.roomName}". Join now?`;
+  dom.inviteModal.style.display = 'flex';
+
+  dom.inviteAccept.onclick = () => {
+    dom.inviteModal.style.display = 'none';
     multiplayerState.socket.emit('room:join', { roomId: payload.roomId });
-  }
+  };
+  dom.inviteDecline.onclick = () => {
+    dom.inviteModal.style.display = 'none';
+  };
 }
 
 function onRoomState(payload) {
@@ -575,7 +669,15 @@ function wireEvents() {
     });
   }
 
+  dom.forgotPasswordLink.onclick = openForgotModal;
+  dom.forgotModalClose.onclick = () => { dom.forgotModal.style.display = 'none'; };
+  dom.forgotSubmit.onclick = handleForgotSubmit;
+  dom.forgotEmail.addEventListener('keypress', (e) => { if (e.key === 'Enter') handleForgotSubmit(); });
+
   dom.pmSend.onclick = sendPrivateMessage;
+  dom.pmInput.addEventListener('keypress', (event) => {
+    if (event.key === 'Enter') sendPrivateMessage();
+  });
 
   dom.saveRecordBtn.onclick = saveRecordOnline;
   dom.loadRecordBtn.onclick = loadRecordList;
@@ -584,6 +686,7 @@ function wireEvents() {
 function initMultiplayer() {
   initDom();
   wireEvents();
+  checkResetToken();
   fetchMe().then((user) => {
     multiplayerState.user = user;
     updateAuthUI();

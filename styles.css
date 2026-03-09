@@ -668,6 +668,12 @@ canvas {
   transition: all 0.2s ease;
 }
 
+.modal-card button.primary-btn {
+  background: var(--ink);
+  color: var(--amber);
+  border-color: var(--amber);
+}
+
 #ui button:hover,
 #presetMenu button:hover {
   background: rgba(0, 0, 0, 0.12);
@@ -769,6 +775,21 @@ canvas {
   min-height: 18px;
   font-size: 12px;
   color: rgba(247, 241, 230, 0.7);
+}
+
+.forgot-link {
+  background: none;
+  border: none;
+  padding: 0;
+  font-size: 12px;
+  color: var(--amber);
+  cursor: pointer;
+  opacity: 0.8;
+  text-decoration: underline;
+}
+
+.forgot-link:hover {
+  opacity: 1;
 }
 
 .record-list {

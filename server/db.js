@@ -29,6 +29,14 @@ CREATE TABLE IF NOT EXISTS games (
   created_at TEXT NOT NULL,
   FOREIGN KEY(user_id) REFERENCES users(id)
 );
+
+CREATE TABLE IF NOT EXISTS password_resets (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  user_id INTEGER NOT NULL,
+  token TEXT UNIQUE NOT NULL,
+  expires_at TEXT NOT NULL,
+  used INTEGER NOT NULL DEFAULT 0
+);
 `;
 
 db.exec(initSql);
@@ -68,6 +76,35 @@ function getUserById(id) {
   return getUserByIdStmt.get(id);
 }
 
+const createPasswordResetStmt = db.prepare(
+  'INSERT INTO password_resets (user_id, token, expires_at) VALUES (?, ?, ?)'
+);
+const getPasswordResetStmt = db.prepare(
+  'SELECT * FROM password_resets WHERE token = ? AND used = 0 AND expires_at > ?'
+);
+const markPasswordResetUsedStmt = db.prepare(
+  'UPDATE password_resets SET used = 1 WHERE token = ?'
+);
+const updateUserPasswordStmt = db.prepare(
+  'UPDATE users SET password_hash = ? WHERE id = ?'
+);
+
+function createPasswordReset({ userId, token, expiresAt }) {
+  createPasswordResetStmt.run(userId, token, expiresAt);
+}
+
+function getPasswordReset(token) {
+  return getPasswordResetStmt.get(token, new Date().toISOString());
+}
+
+function markPasswordResetUsed(token) {
+  markPasswordResetUsedStmt.run(token);
+}
+
+function updateUserPassword(userId, passwordHash) {
+  updateUserPasswordStmt.run(passwordHash, userId);
+}
+
 function createGame({ userId, name, data }) {
   const now = new Date().toISOString();
   const info = createGameStmt.run(userId, name, JSON.stringify(data), now);
@@ -91,4 +128,8 @@ module.exports = {
   createGame,
   listGamesByUser,
   getGameById,
+  createPasswordReset,
+  getPasswordReset,
+  markPasswordResetUsed,
+  updateUserPassword,
 };
