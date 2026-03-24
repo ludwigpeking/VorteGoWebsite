@@ -15,6 +15,7 @@ let quads = [];     // {id,verts:[...],active:true}
 let hoverVertex = null;
 let hoverEdge = null;
 let dragging = null;
+let pendingVertex = null; // mobile: vertex selected by drag, persists until confirmed
 let mode = 'move-vertex';
 let currentScreen = 'room-menu'; // room-menu, preset, random, editor, play
 
@@ -50,10 +51,35 @@ let saveLoadStatusEl = null;
 let komi = 7.5; // current game komi
 
 let canvasCreated = false;
-// Keep canvas sized to the viewport
+// Keep canvas sized to the viewport (on mobile, leave bottom 30% for the panel)
+function canvasHeight() {
+  return windowWidth <= 600 ? Math.floor(windowHeight * 0.7) : windowHeight;
+}
+
+// Measure actual inter-vertex distance from the first live edge (scales with board zoom)
+function effectiveSpacing() {
+  for (const e of edges) {
+    if (!e.active) continue;
+    const a = vertices[e.a], b = vertices[e.b];
+    if (a && b) return Math.sqrt((b.x - a.x) ** 2 + (b.y - a.y) ** 2);
+  }
+  return spacing;
+}
+
+// Find the nearest vertex to (px, py) with no radius limit — used for touch
+function nearestVertex(px, py) {
+  let best = null, bestDist = Infinity;
+  for (const v of vertices) {
+    if (v.visible === false) continue;
+    const d = (v.x - px) ** 2 + (v.y - py) ** 2;
+    if (d < bestDist) { bestDist = d; best = v.id; }
+  }
+  return best;
+}
+
 function ensureCanvas() {
   const w = windowWidth;
-  const h = windowHeight;
+  const h = canvasHeight();
   if (!canvasCreated) {
     const c = createCanvas(w, h);
     c.parent('app');
@@ -124,6 +150,11 @@ function showPanelSection(section) {
   setDisplay('sectionEdit',     section === 'edit'     ? 'block' : 'none');
   setDisplay('sectionPlay',     section === 'play'     ? 'block' : 'none');
   setDisplay('backToMenuBtn',   section !== 'roomMenu' ? 'block' : 'none');
+  // Show confirm button only on mobile in play mode
+  const confirmBtn = document.getElementById('mobileConfirmBtn');
+  if (confirmBtn) {
+    confirmBtn.style.display = (section === 'play' && windowWidth <= 600) ? 'block' : 'none';
+  }
 }
 
 // Show the game rules dialog before starting a multiplayer game.
@@ -518,6 +549,7 @@ function loadGame() {
         if (json.type === 'game') {
           // Restore goban first
           restoreGoban(json);
+          centerAndFitGoban();
           // Then restore game state and history
           restoreGameFromData(json);
           // Switch to play mode
@@ -787,6 +819,34 @@ function mouseMoved() {
   updateHover();
 }
 
+// Shared placement logic used by both click (desktop) and confirm button (mobile)
+function tryPlaceAtHover() {
+  if (hoverVertex === null) return false;
+  if (window.multiplayerState?.active) {
+    const ms = window.multiplayerState;
+    const isSpectator = (ms.role || '').toLowerCase() === 'spectator';
+    const hasOpponent = (ms.memberCount || 0) >= 2;
+    let allowed;
+    if (isSpectator) {
+      allowed = false;
+    } else if (ms.color === 'study') {
+      allowed = true;
+    } else if (!ms.color) {
+      allowed = !hasOpponent;
+    } else {
+      allowed = !hasOpponent || ms.color === currentPlayer;
+    }
+    console.log('[MP place] color:', ms.color, 'currentPlayer:', currentPlayer, 'allowed:', allowed);
+    if (!allowed) return false;
+  }
+  if (markingDeadStones) {
+    toggleDeadStone(hoverVertex);
+  } else {
+    placeStone(hoverVertex);
+  }
+  return true;
+}
+
 function mousePressed() {
   if (mode === 'delete-edge' && hoverEdge !== null) {
     deleteEdgeMirrored(hoverEdge);
@@ -794,33 +854,9 @@ function mousePressed() {
     return;
   }
   if (mode === 'play' && hoverVertex !== null) {
-    // Compute move permission inline so it's always based on live state,
-    // not a potentially-stale canMove flag that depends on event timing.
-    if (window.multiplayerState?.active) {
-      const ms = window.multiplayerState;
-      const isSpectator = (ms.role || '').toLowerCase() === 'spectator';
-      const hasOpponent = (ms.memberCount || 0) >= 2;
-      let allowed;
-      if (isSpectator) {
-        allowed = false;
-      } else if (ms.color === 'study') {
-        allowed = true;                         // study: both move freely
-      } else if (!ms.color) {
-        allowed = !hasOpponent;                 // no color yet: free if solo
-      } else {
-        // Enforce turn order: player can only click on their own turn.
-        // currentPlayer is the live JS variable, always up-to-date.
-        allowed = !hasOpponent || ms.color === currentPlayer;
-      }
-      console.log('[MP click] color:', ms.color, 'currentPlayer:', currentPlayer, 'memberCount:', ms.memberCount, 'hasOpponent:', hasOpponent, 'allowed:', allowed);
-      if (!allowed) return;
-    }
-    if (markingDeadStones) {
-      toggleDeadStone(hoverVertex);
-    } else {
-      placeStone(hoverVertex);
-    }
-    redraw();
+    // On mobile, stone placement is handled by the confirm button, not direct tap
+    if (windowWidth <= 600) return;
+    if (tryPlaceAtHover()) redraw();
     return;
   }
   if (mode === 'move-vertex' && hoverVertex !== null) {
@@ -829,6 +865,53 @@ function mousePressed() {
     dragging = hoverVertex;
   }
 }
+
+// Mobile touch: drag finger to select nearest vertex, confirm button to place
+function touchStarted(event) {
+  // Only intercept touches directly on the canvas — let button/UI taps through
+  if (!event || !event.target || event.target.tagName !== 'CANVAS') return;
+  if (touches.length === 0) return false;
+  const t = touches[0];
+  if (t.y > height) return false; // touch is in the panel area — ignore
+  if (mode === 'play') {
+    hoverVertex = nearestVertex(t.x, t.y);
+    pendingVertex = hoverVertex;
+    redraw();
+  }
+  return false; // prevent browser scroll/zoom on canvas
+}
+
+function touchMoved(event) {
+  if (!event || !event.target || event.target.tagName !== 'CANVAS') return;
+  if (touches.length === 0) return false;
+  const t = touches[0];
+  if (t.y > height) return false;
+  if (mode === 'play') {
+    hoverVertex = nearestVertex(t.x, t.y);
+    pendingVertex = hoverVertex;
+    redraw();
+  }
+  return false;
+}
+
+function touchEnded(event) {
+  if (!event || !event.target || event.target.tagName !== 'CANVAS') return;
+  // Keep pendingVertex alive so the confirm button can use it
+  hoverVertex = pendingVertex;
+  return false; // prevent browser default only for canvas touches
+}
+
+// Called by the mobile confirm button
+window.confirmStonePlacement = function () {
+  if (mode !== 'play') return;
+  // Restore pendingVertex in case hoverVertex was cleared by mouseMoved
+  if (hoverVertex === null && pendingVertex !== null) hoverVertex = pendingVertex;
+  if (tryPlaceAtHover()) {
+    pendingVertex = null;
+    hoverVertex = null;
+    redraw();
+  }
+};
 
 function mouseDragged() {
   if (dragging === null) return;
@@ -1524,45 +1607,46 @@ function initGameHistory() {
 }
 
 function drawStones() {
+  const es = effectiveSpacing();
   for (const [vid, color] of gameStones) {
     const v = vertices[vid];
     if (!v || v.visible === false) continue;
-    
+
     const liberties = getGroupLiberties(vid);
     const isAtari = liberties === 1;
-    
+
     // Draw atari warning ring
     if (isAtari) {
       noFill();
       stroke(255, 80, 80);
       strokeWeight(3);
-      circle(v.x, v.y, 38);
+      circle(v.x, v.y, es * 0.76);
     }
-    
+
     // Draw stone
     noStroke();
     const isDead = deadStones.has(vid);
-    
+
     if (color === 'black') {
       if (isDead) {
         fill(20, 20, 25, 100); // Faded for dead stones
       } else {
         fill(20, 20, 25);
       }
-      circle(v.x, v.y, spacing*0.65);
+      circle(v.x, v.y, es * 0.65);
       // Shine effect
       fill(80, 80, 90, isDead ? 60 : 120);
-      circle(v.x - 4, v.y - 4, spacing*0.25);
+      circle(v.x - es*0.08, v.y - es*0.08, es * 0.25);
     } else {
       if (isDead) {
         fill(250, 250, 245, 100); // Faded for dead stones
       } else {
         fill(250, 250, 245);
       }
-      circle(v.x, v.y, spacing*0.65);
+      circle(v.x, v.y, es * 0.65);
       // Shadow effect
       fill(200, 200, 195, isDead ? 40 : 80);
-      circle(v.x + 3, v.y + 3, spacing*0.25);
+      circle(v.x + es*0.06, v.y + es*0.06, es * 0.25);
     }
     
     // Draw X on dead stones
@@ -1602,39 +1686,37 @@ function drawStones() {
 }
 
 function drawStonePreview() {
-  // Draw a preview stone following the mouse cursor
+  const es = effectiveSpacing();
+  // Draw a preview stone on the hovered vertex
   if (hoverVertex !== null && !gameStones.has(hoverVertex)) {
     const v = vertices[hoverVertex];
     if (v && v.visible !== false) {
       push();
       noStroke();
-      
       if (currentPlayer === 'black') {
         fill(20, 20, 25, 150);
-        circle(v.x, v.y, spacing*0.65);
+        circle(v.x, v.y, es * 0.65);
         fill(80, 80, 90, 80);
-        circle(v.x - 4, v.y - 4, spacing*0.25);
+        circle(v.x - es*0.08, v.y - es*0.08, es * 0.25);
       } else {
         fill(250, 250, 245, 150);
-        circle(v.x, v.y, spacing*0.65);
+        circle(v.x, v.y, es * 0.65);
         fill(200, 200, 195, 60);
-        circle(v.x + 3, v.y + 3, spacing*0.25);
+        circle(v.x + es*0.06, v.y + es*0.06, es * 0.25);
       }
-      
       pop();
     }
   }
-  
-  // Also draw a ghost stone at mouse cursor
-  push();
-  noStroke();
-  if (currentPlayer === 'black') {
-    fill(20, 20, 25, 80);
-  } else {
-    fill(250, 250, 245, 80);
+
+  // Ghost stone following mouse cursor (desktop only)
+  if (windowWidth > 600) {
+    push();
+    noStroke();
+    if (currentPlayer === 'black') fill(20, 20, 25, 80);
+    else fill(250, 250, 245, 80);
+    circle(mouseX, mouseY, es * 0.5);
+    pop();
   }
-  circle(mouseX, mouseY, spacing*0.5);
-  pop();
 }
 
 // Helper: capture game state for undo/redo in play mode
@@ -1938,15 +2020,15 @@ function centerAndFitGoban() {
     v.y += offsetY;
   }
   
-  // Calculate scale to fit with some margin (90% of canvas)
+  // Calculate scale to fit with some margin (90% of canvas), both up and down
   const availableWidth = width * 0.9;
   const availableHeight = height * 0.9;
   const scaleX = availableWidth / currentWidth;
   const scaleY = availableHeight / currentHeight;
-  const scale = Math.min(scaleX, scaleY, 1.0);
-  
-  // Apply scaling from center
-  if (scale < 1.0) {
+  const scale = Math.min(scaleX, scaleY);
+
+  // Apply scaling from center whenever it meaningfully differs from 1
+  if (Math.abs(scale - 1.0) > 0.001) {
     scaleGridByFactor(scale);
   }
   
@@ -2030,6 +2112,7 @@ function startLoadGoban() {
         if (json.type === 'game') {
           // Load as game
           restoreGoban(json);
+          centerAndFitGoban();
           restoreGameFromData(json);
           mode = 'play';
           currentScreen = 'play';
@@ -2041,6 +2124,7 @@ function startLoadGoban() {
         } else {
           // Load as goban only
           restoreGoban(json);
+          centerAndFitGoban();
           if (saveLoadStatusEl) saveLoadStatusEl.textContent = 'Goban loaded';
           
           // Initialize editor UI after loading
@@ -2074,6 +2158,7 @@ function loadGoban() {
         if (json.type === 'game') {
           // Load as game
           restoreGoban(json);
+          centerAndFitGoban();
           restoreGameFromData(json);
           mode = 'play';
           currentScreen = 'play';
@@ -2085,6 +2170,7 @@ function loadGoban() {
         } else {
           // Load as goban only
           restoreGoban(json);
+          centerAndFitGoban();
           if (saveLoadStatusEl) saveLoadStatusEl.textContent = 'Loaded goban';
           
           // Initialize editor UI after loading
@@ -2874,6 +2960,7 @@ window.applyGameSnapshot = (data) => {
   const placeholder = document.getElementById('roomPlaceholder');
   if (placeholder) placeholder.style.display = 'none';
   restoreGoban(data);
+  centerAndFitGoban();
   restoreGameFromData(data);
   mode = 'play';
   currentScreen = 'play';

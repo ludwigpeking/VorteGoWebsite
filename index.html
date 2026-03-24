@@ -9,6 +9,7 @@
 </head>
 <body>
   <div id="authCorner" class="auth-corner">
+    <button id="createRoomBtn" class="primary-btn">Create Game Room</button>
     <div id="authLinks" class="auth-links">
       <button id="loginLink" class="ghost-btn">Login</button>
       <button id="signupLink" class="ghost-btn">Sign Up</button>
@@ -105,13 +106,7 @@
   </div>
 
   <div id="lobby" class="screen screen-active">
-    <header class="lobby-header">
-      <div class="brand">
-        <span class="brand-title">VorteGo</span>
-        <span class="brand-sub">Online Hex Goban</span>
-      </div>
-      <button id="createRoomBtn" class="primary-btn">Create Game Room</button>
-    </header>
+    <header class="lobby-header" style="display:none;"></header>
 
     <div class="lobby-grid">
       <section class="panel chat-panel">
@@ -243,6 +238,7 @@
 
         <!-- SECTION: Play Mode -->
         <div id="sectionPlay" style="display:none;">
+          <button id="mobileConfirmBtn" onclick="window.confirmStonePlacement()" style="display:none;" class="primary-btn mobile-confirm-btn">Place Stone ✓</button>
           <h3 class="panel-section-title">Play Mode</h3>
           <div class="panel-info">Turn: <strong><span id="gameTurn">Black</span></strong></div>
           <div class="panel-info">Captured — Black: <span id="capBlack">0</span> · White: <span id="capWhite">0</span></div>
