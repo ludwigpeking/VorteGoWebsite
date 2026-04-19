@@ -1,6 +1,8 @@
 const path = require('path');
 require('dotenv').config({ path: path.join(__dirname, '..', '.env') });
+const fs = require('fs');
 const http = require('http');
+const https = require('https');
 const crypto = require('crypto');
 const express = require('express');
 const cookieParser = require('cookie-parser');
@@ -27,7 +29,32 @@ const {
 } = require('./db');
 
 const app = express();
-const server = http.createServer(app);
+
+// HTTPS when SSL_KEY and SSL_CERT env vars point to readable PEM files
+// (typical for a Let's Encrypt setup, e.g.
+//   SSL_KEY=/etc/letsencrypt/live/<domain>/privkey.pem
+//   SSL_CERT=/etc/letsencrypt/live/<domain>/fullchain.pem ).
+// Otherwise plain HTTP — fine for local dev or when fronted by a TLS proxy.
+function buildServer() {
+  const keyPath = process.env.SSL_KEY;
+  const certPath = process.env.SSL_CERT;
+  if (keyPath && certPath) {
+    try {
+      const credentials = {
+        key: fs.readFileSync(keyPath),
+        cert: fs.readFileSync(certPath),
+      };
+      console.log(`🔒  HTTPS enabled (key=${keyPath}, cert=${certPath})`);
+      return { server: https.createServer(credentials, app), tls: true };
+    } catch (err) {
+      console.error(`⚠️  Failed to load TLS cert/key — falling back to HTTP:`, err.message);
+    }
+  }
+  console.log('🌐  HTTP mode (no SSL_KEY / SSL_CERT set)');
+  return { server: http.createServer(app), tls: false };
+}
+
+const { server, tls: _tlsEnabled } = buildServer();
 const io = new Server(server);
 
 const PORT = process.env.PORT || 3000;
@@ -683,5 +710,5 @@ io.on('connection', (socket) => {
 });
 
 server.listen(PORT, () => {
-  console.log(`VorteGo server running on :${PORT}`);
+  console.log(`VorteGo server running on ${_tlsEnabled ? 'https' : 'http'}://*:${PORT}`);
 });
