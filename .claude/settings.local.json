@@ -1,0 +1,21 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(node --check server/db.js)",
+      "Bash(node --check server/index.js)",
+      "Bash(node --check sketch.js)",
+      "Bash(npm install *)",
+      "Bash(node -e \"require\\('dotenv'\\).config\\({path:'./.env'}\\); const keys=['PORT','APP_URL','JWT_SECRET','SMTP_HOST','SMTP_PORT','SMTP_USER','SMTP_PASS','SMTP_FROM']; for \\(const k of keys\\) console.log\\(k+': '+\\(process.env[k]?'[set, len='+process.env[k].length+']':'[MISSING]'\\)\\);\")",
+      "Bash(node -e ' *)",
+      "Bash(node --check multiplayer.js)",
+      "Bash(node --check i18n.js)",
+      "Bash(node -e \"const db=require\\('./server/db'\\).db; const before=db.prepare\\('SELECT COUNT\\(*\\) AS n FROM games'\\).get\\(\\).n; db.prepare\\('DELETE FROM games'\\).run\\(\\); db.prepare\\(\\\\\"DELETE FROM sqlite_sequence WHERE name='games'\\\\\"\\).run\\(\\); const after=db.prepare\\('SELECT COUNT\\(*\\) AS n FROM games'\\).get\\(\\).n; console.log\\('games deleted:', before, '-> remaining:', after\\);\")",
+      "Bash(node -e \"const {db}=require\\('./server/db'\\); for \\(const t of ['users','games','password_resets']\\) { try { console.log\\(t, '=', db.prepare\\('SELECT COUNT\\(*\\) AS n FROM '+t\\).get\\(\\).n\\); } catch\\(e\\){ console.log\\(t, 'err', e.message\\); } } console.log\\('---sample games---'\\); console.log\\(db.prepare\\('SELECT id, user_id, name, length\\(data\\) AS data_len, created_at FROM games ORDER BY id DESC LIMIT 5'\\).all\\(\\)\\);\")",
+      "Bash(node -e \"const {db}=require\\('./server/db'\\); db.prepare\\('DELETE FROM games'\\).run\\(\\); db.exec\\('DELETE FROM sqlite_sequence WHERE name=\\\\'games\\\\''\\); db.pragma\\('wal_checkpoint\\(TRUNCATE\\)'\\); db.exec\\('VACUUM'\\); console.log\\('games after:', db.prepare\\('SELECT COUNT\\(*\\) AS n FROM games'\\).get\\(\\).n\\);\")",
+      "Bash(node -e \"const {db}=require\\('./server/db'\\); console.log\\(db.prepare\\('SELECT id, name FROM games'\\).all\\(\\)\\); db.prepare\\('DELETE FROM games'\\).run\\(\\); console.log\\('cleared, now:', db.prepare\\('SELECT COUNT\\(*\\) AS n FROM games'\\).get\\(\\).n\\);\")",
+      "Bash(node --check game_reviewer.js)",
+      "Bash(node *)",
+      "Bash(grep -E \"^\\\\.gitignore$\")"
+    ]
+  }
+}

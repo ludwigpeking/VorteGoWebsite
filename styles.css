@@ -18,6 +18,19 @@
   font-family: 'Space Grotesk', sans-serif;
 }
 
+/* Text inputs and selects stay square app-wide. */
+input[type="text"],
+input[type="email"],
+input[type="password"],
+input[type="number"],
+input[type="search"],
+input[type="url"],
+input:not([type]),
+textarea,
+select {
+  border-radius: 0;
+}
+
 html, body {
   margin: 0;
   padding: 0;
@@ -27,10 +40,11 @@ html, body {
 
 body {
   min-height: 100vh;
-  background-image: url('images/coverImagePlaceholder.png');
-  background-size: cover;
-  background-position: top center;
-  background-attachment: scroll;
+  background-image: url('images/logo.png'), url('images/coverImage.png');
+  background-size: 50% auto, cover;
+  background-position: center 4%, top center;
+  background-repeat: no-repeat, no-repeat;
+  background-attachment: scroll, scroll;
 }
 
 .screen {
@@ -106,9 +120,81 @@ body {
   color: var(--amber);
 }
 
+.ghost-btn.active {
+  background: var(--amber);
+  color: var(--ink);
+  border-color: transparent;
+}
+
 .primary-btn:hover {
   transform: translateY(-1px);
   box-shadow: 0 10px 24px rgba(242, 183, 5, 0.45);
+}
+
+.lang-picker {
+  position: relative;
+  display: inline-flex;
+  gap: 4px;
+  padding: 3px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: rgba(16, 20, 28, 0.55);
+}
+
+.lang-picker .lang-btn {
+  border: none;
+  background: transparent;
+  color: var(--paper);
+  font-weight: 600;
+  font-size: 11px;
+  padding: 3px 8px;
+  border-radius: 999px;
+  cursor: pointer;
+  opacity: 0.7;
+  transition: background 0.15s ease, color 0.15s ease, opacity 0.15s ease;
+  min-width: 26px;
+}
+
+.lang-picker .lang-btn:hover {
+  opacity: 1;
+  color: var(--amber);
+}
+
+.lang-picker .lang-btn.active {
+  background: var(--amber);
+  color: var(--ink);
+  opacity: 1;
+}
+
+/* Dropdown collapsed state: only the active button shows. When .open, the
+   non-active buttons appear as an absolutely positioned column below the
+   trigger, so the surrounding nav bar layout doesn't shift. */
+.lang-picker .lang-btn:not(.active) {
+  display: none;
+}
+
+.lang-picker.open .lang-btn:not(.active) {
+  display: block;
+  position: absolute;
+  left: 3px;
+  right: 3px;
+  text-align: center;
+  background: rgba(16, 20, 28, 0.95);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  z-index: 50;
+  opacity: 1;
+}
+
+.lang-picker-sm {
+  margin-left: 8px;
+  vertical-align: middle;
+}
+
+.lang-picker-sm .lang-btn {
+  font-size: 10px;
+  padding: 2px 6px;
+  min-width: 22px;
 }
 
 .icon-btn {
@@ -167,13 +253,15 @@ body {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  margin-bottom: 14px;
+  margin-bottom: 8px;
 }
 
 .panel-header h3, .panel-block h3 {
-  margin: 0 0 8px;
-  font-family: 'Fraunces', serif;
-  font-size: 16px;
+  margin: 0 0 4px;
+  font-family: Helvetica, Arial, sans-serif;
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: 0.2px;
 }
 
 .panel-tag {
@@ -196,15 +284,17 @@ body {
 }
 
 .chat-panel {
-  flex: 1.2;
+  flex: 0 0 38%;
   min-height: 0;
+  max-height: 38%;
   display: flex;
   flex-direction: column;
 }
 
 .side-panel {
-  flex: 0.8;
+  flex: 1 1 62%;
   min-height: 0;
+  max-height: 62%;
   display: flex;
   flex-direction: column;
   gap: 18px;
@@ -222,7 +312,7 @@ body {
 .modal-card input,
 select {
   flex: 1;
-  border-radius: 12px;
+  border-radius: 0;
   border: 1px solid rgba(255, 255, 255, 0.15);
   background: rgba(15, 18, 25, 0.5);
   color: var(--paper);
@@ -263,11 +353,19 @@ select {
 }
 
 .pm-box {
-  margin-top: 10px;
+  margin-top: 8px;
   display: flex;
   flex-direction: column;
-  gap: 10px;
+  gap: 6px;
   max-height: 180px;
+}
+
+.pm-box > label {
+  font-family: Helvetica, Arial, sans-serif;
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.2px;
+  color: var(--paper);
 }
 
 .pm-input {
@@ -618,8 +716,6 @@ canvas {
   position: fixed;
   top: 0;
   left: 0;
-  width: 100vw !important;
-  height: 100vh;
   background: transparent !important;
 }
 
@@ -758,6 +854,13 @@ canvas {
   justify-content: space-between;
   align-items: center;
   margin-bottom: 12px;
+}
+
+.modal-header h2 {
+  margin: 0;
+  font-family: 'Fraunces', serif;
+  font-size: 18px;
+  font-weight: 600;
 }
 
 .modal-tabs {
@@ -905,8 +1008,9 @@ canvas {
   }
 
   body {
-    background-size: 100% auto;
-    background-repeat: no-repeat;
+    background-size: 50% auto, 100% auto;
+    background-repeat: no-repeat, no-repeat;
+    background-position: center 4%, top center;
   }
 
   .auth-corner {
@@ -943,18 +1047,44 @@ canvas {
     border-left: none;
     border-right: none;
     box-shadow: none;
-    padding: 12px 16px;
+    padding: 8px 12px;
   }
 
   .lobby-grid .panel + .panel {
     border-top: 1px solid var(--border);
   }
 
+  /* Chat is shorter; the side panel (online players + game rooms) takes the
+     larger share of the lobby's vertical space. */
   .chat-panel {
-    flex: 1;
+    flex: 0 0 38%;
+    min-height: 0;
+    max-height: 38%;
   }
 
   .side-panel {
-    flex: 1;
+    flex: 1 1 62%;
+    min-height: 0;
+    max-height: 62%;
+    gap: 8px;
+  }
+
+  .lobby-grid .panel-header {
+    margin-bottom: 6px;
+  }
+
+  .lobby-grid .panel-block h3,
+  .lobby-grid .panel-header h3 {
+    font-size: 12px;
+    margin-bottom: 4px;
+  }
+
+  .lobby-grid .chat-input {
+    margin-top: 6px;
+    gap: 6px;
+  }
+
+  .lobby-grid .chat-log {
+    padding: 8px;
   }
 }

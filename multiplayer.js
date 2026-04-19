@@ -74,6 +74,10 @@ function initDom() {
   dom.inviteDecline = $('inviteDecline');
 
   dom.createRoomBtn = $('createRoomBtn');
+  dom.createRoomModal = $('createRoomModal');
+  dom.createRoomName = $('createRoomName');
+  dom.createRoomCancel = $('createRoomCancel');
+  dom.createRoomSubmit = $('createRoomSubmit');
   dom.leaveRoomBtn = $('leaveRoomBtn');
   dom.inviteTarget = $('inviteTarget');
   dom.inviteSend = $('inviteSend');
@@ -95,8 +99,7 @@ function initDom() {
   dom.pmSend = $('pmSend');
   dom.pmLog = $('pmLog');
 
-  dom.saveRecordBtn = $('saveRecordBtn');
-  dom.loadRecordBtn = $('loadRecordBtn');
+  dom.menuGameReviewBtn = $('menuGameReview');
 }
 
 function ensureGuestId() {
@@ -130,7 +133,7 @@ function updateAuthUI() {
   } else {
     dom.authLinks.style.display = 'flex';
     dom.authUser.style.display = 'none';
-    dom.authName.textContent = 'guest';
+    dom.authName.textContent = t('nav.guest');
   }
 }
 
@@ -138,14 +141,14 @@ function openAuthModal(mode) {
   dom.authModal.style.display = 'flex';
   dom.authStatus.textContent = '';
   if (mode === 'signup') {
-    dom.authModalTitle.textContent = 'Create Account';
+    dom.authModalTitle.textContent = t('auth.createAccount');
     dom.authTabLogin.classList.remove('active');
     dom.authTabSignup.classList.add('active');
     dom.authLoginFields.style.display = 'none';
     dom.authSignupFields.style.display = 'block';
     dom.forgotLinkRow.style.display = 'none';
   } else {
-    dom.authModalTitle.textContent = 'Welcome Back';
+    dom.authModalTitle.textContent = t('auth.welcomeBack');
     dom.authTabSignup.classList.remove('active');
     dom.authTabLogin.classList.add('active');
     dom.authLoginFields.style.display = 'block';
@@ -167,28 +170,28 @@ function openForgotModal() {
 
 async function handleForgotSubmit() {
   const email = dom.forgotEmail.value.trim();
-  if (!email) { dom.forgotStatus.textContent = 'Please enter your email.'; return; }
+  if (!email) { dom.forgotStatus.textContent = t('forgot.enterEmail'); return; }
   dom.forgotSubmit.disabled = true;
-  dom.forgotStatus.textContent = 'Sending…';
+  dom.forgotStatus.textContent = t('forgot.sending');
   try {
     await fetch('/api/auth/forgot-password', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ email }),
     });
-    dom.forgotStatus.textContent = 'If that email is registered, a reset link has been sent. Check your inbox.';
+    dom.forgotStatus.textContent = t('forgot.sentMaybe');
     dom.forgotSubmit.disabled = false;
   } catch {
-    dom.forgotStatus.textContent = 'Network error. Please try again.';
+    dom.forgotStatus.textContent = t('forgot.networkError');
     dom.forgotSubmit.disabled = false;
   }
 }
 
 async function handleResetSubmit(token) {
   const password = dom.resetPassword.value;
-  if (password.length < 6) { dom.resetStatus.textContent = 'Password must be at least 6 characters.'; return; }
+  if (password.length < 6) { dom.resetStatus.textContent = t('reset.tooShort'); return; }
   dom.resetSubmit.disabled = true;
-  dom.resetStatus.textContent = 'Saving…';
+  dom.resetStatus.textContent = t('reset.saving');
   try {
     const res = await fetch('/api/auth/reset-password', {
       method: 'POST',
@@ -197,7 +200,7 @@ async function handleResetSubmit(token) {
     });
     const data = await res.json();
     if (!res.ok) {
-      dom.resetStatus.textContent = data.message || 'Failed.';
+      dom.resetStatus.textContent = data.message || t('reset.tooShort');
       dom.resetSubmit.disabled = false;
       return;
     }
@@ -206,7 +209,7 @@ async function handleResetSubmit(token) {
     window.history.replaceState({}, '', '/');
     openAuthModal('login');
   } catch {
-    dom.resetStatus.textContent = 'Network error. Please try again.';
+    dom.resetStatus.textContent = t('forgot.networkError');
     dom.resetSubmit.disabled = false;
   }
 }
@@ -224,7 +227,7 @@ function checkResetToken() {
 async function handleAuthSubmit(event) {
   event.preventDefault();
   const isSignup = dom.authTabSignup.classList.contains('active');
-  dom.authStatus.textContent = 'Working...';
+  dom.authStatus.textContent = t('auth.working');
 
   const payload = isSignup
     ? {
@@ -255,7 +258,7 @@ async function handleAuthSubmit(event) {
     closeAuthModal();
     refreshSocketConnection();
   } catch (err) {
-    dom.authStatus.textContent = 'Network error.';
+    dom.authStatus.textContent = t('auth.networkError');
   }
 }
 
@@ -272,13 +275,13 @@ function connectSocket() {
 
   multiplayerState.socket.on('connect', () => {
     multiplayerState.connected = true;
-    dom.lobbyStatus.textContent = 'Connected';
+    dom.lobbyStatus.textContent = t('lobby.connected');
     dom.lobbyStatus.style.color = '#2ec4b6';
   });
 
   multiplayerState.socket.on('disconnect', () => {
     multiplayerState.connected = false;
-    dom.lobbyStatus.textContent = 'Offline';
+    dom.lobbyStatus.textContent = t('lobby.offline');
     dom.lobbyStatus.style.color = '#f05d5e';
   });
 
@@ -294,6 +297,9 @@ function connectSocket() {
   multiplayerState.socket.on('room:rules', onRoomRules);
   multiplayerState.socket.on('room:state', onRoomState);
   multiplayerState.socket.on('game:move', onGameMove);
+  multiplayerState.socket.on('game:recordSaved', (p) => {
+    console.log('[record]', p);
+  });
 }
 
 function refreshSocketConnection() {
@@ -303,25 +309,27 @@ function refreshSocketConnection() {
   connectSocket();
 }
 
+let lastPresence = [];
 function renderPresence(users) {
+  if (users) lastPresence = users;
   dom.onlineUsers.innerHTML = '';
   dom.pmTarget.innerHTML = '';
   dom.inviteTarget.innerHTML = '';
 
   const pmPlaceholder = document.createElement('option');
   pmPlaceholder.value = '';
-  pmPlaceholder.textContent = 'Select user';
+  pmPlaceholder.textContent = t('lobby.selectUser');
   dom.pmTarget.appendChild(pmPlaceholder);
 
   const invitePlaceholder = document.createElement('option');
   invitePlaceholder.value = '';
-  invitePlaceholder.textContent = 'Invite player';
+  invitePlaceholder.textContent = t('lobby.invitePlayer');
   dom.inviteTarget.appendChild(invitePlaceholder);
 
-  users.forEach((user) => {
+  lastPresence.forEach((user) => {
     const item = document.createElement('div');
     item.className = 'list-item';
-    item.innerHTML = `<span>${user.name}${user.isGuest ? ' (guest)' : ''}</span>`;
+    item.innerHTML = `<span>${user.name}${user.isGuest ? ' ' + t('lobby.guestSuffix') : ''}</span>`;
     dom.onlineUsers.appendChild(item);
 
     const option = document.createElement('option');
@@ -336,20 +344,25 @@ function renderPresence(users) {
   });
 }
 
+let lastRooms = [];
 function renderRooms(rooms) {
+  if (rooms) lastRooms = rooms;
   dom.roomList.innerHTML = '';
-  rooms.forEach((room) => {
+  lastRooms.forEach((room) => {
     const item = document.createElement('div');
     item.className = 'list-item';
-    item.innerHTML = `
-      <div>
-        <strong>${room.name}</strong><br />
-        <span>${room.count} players · Host ${room.host}</span>
-      </div>
-    `;
+    const info = document.createElement('div');
+    const title = document.createElement('strong');
+    title.textContent = room.name;
+    const meta = document.createElement('span');
+    meta.textContent = `${t('room.players', { count: room.count })} · ${t('lobby.hostLabel', { host: room.host })}`;
+    info.appendChild(title);
+    info.appendChild(document.createElement('br'));
+    info.appendChild(meta);
+    item.appendChild(info);
     const joinBtn = document.createElement('button');
     joinBtn.className = 'ghost-btn';
-    joinBtn.textContent = 'Join';
+    joinBtn.textContent = t('lobby.join');
     joinBtn.onclick = () => {
       multiplayerState.socket.emit('room:join', { roomId: room.id });
     };
@@ -393,6 +406,8 @@ function onRoomJoined(payload) {
   updateRoomUI(payload);
   applyOwnerUI(payload.isHost);
   showRoom();
+  const authCorner = document.getElementById('authCorner');
+  if (authCorner) authCorner.style.display = 'none';
   dom.roomPlaceholder.style.display = 'flex';
   dom.app.style.display = 'none';
   // Clear any leftover panel state from a previous game
@@ -419,18 +434,20 @@ function onRoomLeft() {
   multiplayerState.gameStarted = false;
   applyOwnerUI(false);
   updateMultiplayerState();
+  const authCorner = document.getElementById('authCorner');
+  if (authCorner) authCorner.style.display = '';
   showLobby();
 }
 
 function onRoomMembers(payload) {
   if (!payload || payload.roomId !== multiplayerState.roomId) return;
   multiplayerState.memberCount = payload.count;
-  dom.roomMembers.textContent = `${payload.count} players`;
+  dom.roomMembers.textContent = t('room.players', { count: payload.count });
   updateMultiplayerState(); // re-evaluate canMove now that member count changed
 }
 
 function onRoomInvite(payload) {
-  dom.inviteModalMsg.textContent = `${payload.from} invited you to join "${payload.roomName}". Join now?`;
+  dom.inviteModalMsg.textContent = t('invite.message', { from: payload.from, roomName: payload.roomName });
   dom.inviteModal.style.display = 'flex';
 
   dom.inviteAccept.onclick = () => {
@@ -493,10 +510,18 @@ function onRoomRules(payload) {
   if (komiEl) komiEl.textContent = payload.komi;
 }
 
+function localizeRole(role) {
+  const r = (role || '').toLowerCase();
+  if (r === 'spectator') return t('room.spectator');
+  if (r === 'black') return t('room.black');
+  if (r === 'white') return t('room.white');
+  return role || '';
+}
+
 function updateRoomUI(payload) {
   dom.roomLabel.textContent = payload.roomName;
-  dom.roomRole.textContent = payload.role;
-  dom.roomMembers.textContent = `${payload.count} players`;
+  dom.roomRole.textContent = localizeRole(payload.role);
+  dom.roomMembers.textContent = t('room.players', { count: payload.count });
 }
 
 function showLobby() {
@@ -554,10 +579,32 @@ function sendPrivateMessage() {
   dom.pmInput.value = '';
 }
 
-function createRoom() {
-  const name = prompt('Room name?', 'VorteGo Room');
-  if (!name) return;
+function openCreateRoomModal() {
+  dom.createRoomName.value = '';
+  dom.createRoomName.placeholder = multiplayerState.user
+    ? t('createRoom.placeholderUser', { name: multiplayerState.user.username })
+    : t('createRoom.placeholder');
+  dom.createRoomModal.style.display = 'flex';
+  // Defer focus until the modal is painted
+  setTimeout(() => dom.createRoomName.focus(), 0);
+}
+
+function closeCreateRoomModal() {
+  dom.createRoomModal.style.display = 'none';
+}
+
+function submitCreateRoom() {
+  const typed = dom.createRoomName.value.trim();
+  const fallback = multiplayerState.user
+    ? `${multiplayerState.user.username}'s Room`
+    : 'VorteGo Room';
+  const name = (typed || fallback).slice(0, 40);
   multiplayerState.socket.emit('room:create', { name });
+  closeCreateRoomModal();
+}
+
+function createRoom() {
+  openCreateRoomModal();
 }
 
 function leaveRoom() {
@@ -579,38 +626,17 @@ function syncGameState() {
   multiplayerState.socket.emit('game:state', { roomId: multiplayerState.roomId, state });
 }
 
-async function saveRecordOnline() {
-  if (!multiplayerState.user) {
-    alert('Login required to save records.');
-    return;
-  }
-  if (!window.getGameSnapshot) return;
-  const payload = {
-    name: `${multiplayerState.roomName || 'VorteGo'} - ${new Date().toLocaleString()}`,
-    data: window.getGameSnapshot(),
-  };
-  const res = await fetch('/api/games', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(payload),
-  });
-  if (res.ok) {
-    alert('Saved online.');
-  } else {
-    alert('Failed to save.');
-  }
-}
-
 async function loadRecordList() {
   if (!multiplayerState.user) {
-    alert('Login required to load records.');
+    alert(t('records.loginRequiredLoad'));
     return;
   }
-  dom.recordList.innerHTML = 'Loading...';
+  dom.recordList.innerHTML = '';
+  dom.recordList.textContent = t('records.loading');
   dom.recordModal.style.display = 'flex';
   const res = await fetch('/api/games');
   if (!res.ok) {
-    dom.recordList.textContent = 'Failed to load.';
+    dom.recordList.textContent = t('records.failed');
     return;
   }
   const data = await res.json();
@@ -618,10 +644,18 @@ async function loadRecordList() {
   data.games.forEach((game) => {
     const item = document.createElement('div');
     item.className = 'record-item';
-    item.innerHTML = `<div><strong>${game.name}</strong><br /><span>${game.createdAt}</span></div>`;
+    const info = document.createElement('div');
+    const title = document.createElement('strong');
+    title.textContent = game.name;
+    const created = document.createElement('span');
+    created.textContent = game.createdAt;
+    info.appendChild(title);
+    info.appendChild(document.createElement('br'));
+    info.appendChild(created);
+    item.appendChild(info);
     const loadBtn = document.createElement('button');
     loadBtn.className = 'ghost-btn';
-    loadBtn.textContent = 'Load';
+    loadBtn.textContent = t('records.load');
     loadBtn.onclick = () => loadRecord(game.id);
     item.appendChild(loadBtn);
     dom.recordList.appendChild(item);
@@ -652,6 +686,12 @@ function wireEvents() {
   dom.recordModalClose.onclick = () => (dom.recordModal.style.display = 'none');
 
   dom.createRoomBtn.onclick = createRoom;
+  dom.createRoomCancel.onclick = closeCreateRoomModal;
+  dom.createRoomSubmit.onclick = submitCreateRoom;
+  dom.createRoomName.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') { e.preventDefault(); submitCreateRoom(); }
+    else if (e.key === 'Escape') { e.preventDefault(); closeCreateRoomModal(); }
+  });
   dom.leaveRoomBtn.onclick = leaveRoom;
   dom.inviteSend.onclick = sendInvite;
 
@@ -679,8 +719,7 @@ function wireEvents() {
     if (event.key === 'Enter') sendPrivateMessage();
   });
 
-  dom.saveRecordBtn.onclick = saveRecordOnline;
-  dom.loadRecordBtn.onclick = loadRecordList;
+  dom.menuGameReviewBtn.onclick = loadRecordList;
 }
 
 function initMultiplayer() {
@@ -715,6 +754,11 @@ window.multiplayerSendPass = () => {
 };
 
 window.multiplayerSyncState = syncGameState;
+
+window.multiplayerSendGameEnd = (result) => {
+  if (!multiplayerState.roomId) return;
+  multiplayerState.socket.emit('game:end', { roomId: multiplayerState.roomId, result });
+};
 
 window.multiplayerSendRules = (rules) => {
   if (!multiplayerState.roomId) return;
@@ -761,3 +805,18 @@ window.multiplayerUpdateTurn = () => {
 };
 
 window.addEventListener('DOMContentLoaded', initMultiplayer);
+
+window.addEventListener('languagechange', () => {
+  updateAuthUI();
+  if (dom.onlineUsers) renderPresence();
+  if (dom.roomList) renderRooms();
+  if (multiplayerState.roomId) {
+    dom.roomRole.textContent = localizeRole(multiplayerState.role);
+    dom.roomMembers.textContent = t('room.players', { count: multiplayerState.memberCount || 0 });
+  }
+  if (multiplayerState.connected) {
+    dom.lobbyStatus.textContent = t('lobby.connected');
+  } else {
+    dom.lobbyStatus.textContent = t('lobby.offline');
+  }
+});

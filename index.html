@@ -6,47 +6,54 @@
   <title>VorteGo Online</title>
   <script src="p5.js"></script>
   <link rel="stylesheet" href="styles.css" />
+  <script src="i18n.js"></script>
 </head>
 <body>
   <div id="authCorner" class="auth-corner">
-    <button id="createRoomBtn" class="primary-btn">Create Game Room</button>
+    <div id="langPicker" class="lang-picker" role="group" aria-label="Language">
+      <button type="button" class="lang-btn" data-lang-set="en">EN</button>
+      <button type="button" class="lang-btn" data-lang-set="zh">中</button>
+      <button type="button" class="lang-btn" data-lang-set="ja">日</button>
+      <button type="button" class="lang-btn" data-lang-set="ko">한</button>
+    </div>
+    <button id="createRoomBtn" class="primary-btn" data-i18n="nav.createRoom">Create Game Room</button>
     <div id="authLinks" class="auth-links">
-      <button id="loginLink" class="ghost-btn">Login</button>
-      <button id="signupLink" class="ghost-btn">Sign Up</button>
+      <button id="loginLink" class="ghost-btn" data-i18n="nav.login">Login</button>
+      <button id="signupLink" class="ghost-btn" data-i18n="nav.signup">Sign Up</button>
     </div>
     <div id="authUser" class="auth-user" style="display: none;">
       <span id="authName" class="auth-name">guest</span>
-      <button id="logoutLink" class="ghost-btn">Logout</button>
+      <button id="logoutLink" class="ghost-btn" data-i18n="nav.logout">Logout</button>
     </div>
   </div>
 
   <div id="authModal" class="modal" style="display: none;">
     <div class="modal-card">
       <div class="modal-header">
-        <h2 id="authModalTitle">Welcome Back</h2>
-        <button id="authModalClose" class="icon-btn">Close</button>
+        <h2 id="authModalTitle" data-i18n="auth.welcomeBack">Welcome Back</h2>
+        <button id="authModalClose" class="icon-btn" data-i18n="auth.close">Close</button>
       </div>
       <div class="modal-tabs">
-        <button id="authTabLogin" class="tab-btn active">Login</button>
-        <button id="authTabSignup" class="tab-btn">Sign Up</button>
+        <button id="authTabLogin" class="tab-btn active" data-i18n="auth.tabLogin">Login</button>
+        <button id="authTabSignup" class="tab-btn" data-i18n="auth.tabSignup">Sign Up</button>
       </div>
       <form id="authForm" class="auth-form">
         <div id="authSignupFields" style="display: none;">
-          <label>Username</label>
+          <label data-i18n="auth.username">Username</label>
           <input id="signupUsername" type="text" autocomplete="username" />
-          <label>Email</label>
+          <label data-i18n="auth.email">Email</label>
           <input id="signupEmail" type="email" autocomplete="email" />
         </div>
         <div id="authLoginFields">
-          <label>Username or Email</label>
+          <label data-i18n="auth.usernameOrEmail">Username or Email</label>
           <input id="loginIdentity" type="text" autocomplete="username" />
         </div>
-        <label>Password</label>
+        <label data-i18n="auth.password">Password</label>
         <input id="authPassword" type="password" autocomplete="current-password" />
         <div id="forgotLinkRow" style="text-align:right; margin-top:-4px;">
-          <button type="button" id="forgotPasswordLink" class="forgot-link">Forgot password?</button>
+          <button type="button" id="forgotPasswordLink" class="forgot-link" data-i18n="auth.forgotPassword">Forgot password?</button>
         </div>
-        <button id="authSubmit" class="primary-btn" type="submit">Continue</button>
+        <button id="authSubmit" class="primary-btn" type="submit" data-i18n="auth.continue">Continue</button>
         <div id="authStatus" class="form-status"></div>
       </form>
     </div>
@@ -56,15 +63,15 @@
   <div id="forgotModal" class="modal" style="display: none;">
     <div class="modal-card">
       <div class="modal-header">
-        <h2>Reset Password</h2>
-        <button id="forgotModalClose" class="icon-btn">Close</button>
+        <h2 data-i18n="forgot.title">Reset Password</h2>
+        <button id="forgotModalClose" class="icon-btn" data-i18n="auth.close">Close</button>
       </div>
-      <p style="font-size:13px;margin:0 0 14px;opacity:.8;">
+      <p style="font-size:13px;margin:0 0 14px;opacity:.8;" data-i18n="forgot.body">
         Enter the email address on your account and we'll send you a reset link.
       </p>
-      <label>Email</label>
+      <label data-i18n="auth.email">Email</label>
       <input id="forgotEmail" type="email" autocomplete="email" style="margin-bottom:12px;" />
-      <button id="forgotSubmit" class="primary-btn" type="button">Send Reset Link</button>
+      <button id="forgotSubmit" class="primary-btn" type="button" data-i18n="forgot.send">Send Reset Link</button>
       <div id="forgotStatus" class="form-status"></div>
     </div>
   </div>
@@ -73,34 +80,76 @@
   <div id="resetModal" class="modal" style="display: none;">
     <div class="modal-card">
       <div class="modal-header">
-        <h2>Choose New Password</h2>
+        <h2 data-i18n="reset.title">Choose New Password</h2>
       </div>
-      <label>New Password</label>
+      <label data-i18n="reset.label">New Password</label>
       <input id="resetPassword" type="password" autocomplete="new-password" style="margin-bottom:12px;" />
-      <button id="resetSubmit" class="primary-btn" type="button">Save New Password</button>
+      <button id="resetSubmit" class="primary-btn" type="button" data-i18n="reset.save">Save New Password</button>
       <div id="resetStatus" class="form-status"></div>
+    </div>
+  </div>
+
+  <!-- Create game room modal -->
+  <div id="createRoomModal" class="modal" style="display: none;">
+    <div class="modal-card">
+      <div class="modal-header">
+        <h2 data-i18n="createRoom.title">Create a Game Room</h2>
+      </div>
+      <p style="font-size:13px;margin:0 0 14px;opacity:.8;line-height:1.45;" data-i18n="createRoom.body">
+        Pick a name your opponent will see in the lobby. You'll be the host —
+        once someone joins, you can choose the board and start the game.
+      </p>
+      <label for="createRoomName" data-i18n="createRoom.label">Room name</label>
+      <input id="createRoomName" type="text" maxlength="40" data-i18n-placeholder="createRoom.placeholder" placeholder="e.g. Friday Night Go" style="margin-bottom:6px;" />
+      <div id="createRoomHint" class="form-status" data-i18n="createRoom.hint">Up to 40 characters. Leave blank to use your username.</div>
+      <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:14px;">
+        <button id="createRoomCancel" class="ghost-btn" type="button" data-i18n="createRoom.cancel">Cancel</button>
+        <button id="createRoomSubmit" class="primary-btn" type="button" data-i18n="createRoom.submit">Create Room</button>
+      </div>
     </div>
   </div>
 
   <div id="recordModal" class="modal" style="display: none;">
     <div class="modal-card">
       <div class="modal-header">
-        <h2>Saved Records</h2>
-        <button id="recordModalClose" class="icon-btn">Close</button>
+        <h2 data-i18n="records.title">Saved Records</h2>
+        <button id="recordModalClose" class="icon-btn" data-i18n="auth.close">Close</button>
       </div>
       <div id="recordList" class="record-list"></div>
+    </div>
+  </div>
+
+  <div id="gobanModal" class="modal" style="display: none;">
+    <div class="modal-card">
+      <div class="modal-header">
+        <h2 id="gobanModalTitle" data-i18n="goban.modal.loadTitle">Load Goban</h2>
+        <button id="gobanModalClose" class="icon-btn" data-i18n="auth.close">Close</button>
+      </div>
+      <div id="gobanSaveRow" style="display:none; margin-bottom:12px;">
+        <input id="gobanSaveName" type="text" data-i18n-placeholder="goban.modal.namePlaceholder" placeholder="Goban name" style="flex:1; padding:8px 10px; border-radius:8px; border:1px solid rgba(255,255,255,0.12); background:rgba(255,255,255,0.04); color:inherit; width:100%; box-sizing:border-box;" />
+        <div style="display:flex; justify-content:flex-end; gap:8px; margin-top:8px;">
+          <button id="gobanSaveBtn" class="primary-btn" data-i18n="goban.modal.save">Save</button>
+        </div>
+      </div>
+      <div id="gobanFilterRow" style="display:flex; gap:8px; flex-wrap:wrap; margin-bottom:8px;">
+        <button class="ghost-btn goban-filter-btn" data-filter="official" data-i18n="goban.filter.official">Official Gobans</button>
+        <button class="ghost-btn goban-filter-btn" data-filter="mine" data-i18n="goban.filter.mine">My Gobans</button>
+        <button class="ghost-btn goban-filter-btn" data-filter="all" data-i18n="goban.filter.all">All</button>
+      </div>
+      <input id="gobanSearchInput" type="text" data-i18n-placeholder="goban.modal.searchPlaceholder" placeholder="Search by name or creator…" style="width:100%; padding:8px 10px; border-radius:8px; border:1px solid rgba(255,255,255,0.12); background:rgba(255,255,255,0.04); color:inherit; margin-bottom:12px; box-sizing:border-box;" />
+      <div id="gobanList" class="record-list"></div>
     </div>
   </div>
 
   <div id="inviteModal" class="modal" style="display: none;">
     <div class="modal-card">
       <div class="modal-header">
-        <h2>Game Invitation</h2>
+        <h2 data-i18n="invite.title">Game Invitation</h2>
       </div>
       <p id="inviteModalMsg" style="margin: 0 0 18px;"></p>
       <div style="display: flex; gap: 10px; justify-content: flex-end;">
-        <button id="inviteDecline" class="ghost-btn">Decline</button>
-        <button id="inviteAccept" class="primary-btn">Join</button>
+        <button id="inviteDecline" class="ghost-btn" data-i18n="invite.decline">Decline</button>
+        <button id="inviteAccept" class="primary-btn" data-i18n="invite.accept">Join</button>
       </div>
     </div>
   </div>
@@ -111,33 +160,33 @@
     <div class="lobby-grid">
       <section class="panel chat-panel">
         <div class="panel-header">
-          <h3>Global Chat</h3>
-          <span id="lobbyStatus" class="panel-tag">Connected</span>
+          <h3 data-i18n="lobby.globalChat">Global Chat</h3>
+          <span id="lobbyStatus" class="panel-tag" data-i18n="lobby.connected">Connected</span>
         </div>
         <div id="globalChatLog" class="chat-log"></div>
         <div class="chat-input">
-          <input id="globalChatInput" type="text" placeholder="Say hello to the lobby" />
-          <button id="globalChatSend" class="primary-btn">Send</button>
+          <input id="globalChatInput" type="text" data-i18n-placeholder="lobby.sayHello" placeholder="Say hello to the lobby" />
+          <button id="globalChatSend" class="primary-btn" data-i18n="lobby.send">Send</button>
         </div>
       </section>
 
       <section class="panel side-panel">
         <div class="panel-block">
-          <h3>Online Players</h3>
+          <h3 data-i18n="lobby.onlinePlayers">Online Players</h3>
           <div id="onlineUsers" class="list"></div>
           <div class="pm-box">
-            <label>Private Message</label>
+            <label data-i18n="lobby.privateMessage">Private Message</label>
             <select id="pmTarget"></select>
             <div class="pm-input">
-              <input id="pmInput" type="text" placeholder="Message" />
-              <button id="pmSend" class="ghost-btn">Send</button>
+              <input id="pmInput" type="text" data-i18n-placeholder="lobby.message" placeholder="Message" />
+              <button id="pmSend" class="ghost-btn" data-i18n="lobby.send">Send</button>
             </div>
             <div id="pmLog" class="pm-log"></div>
           </div>
         </div>
 
         <div class="panel-block">
-          <h3>Game Rooms</h3>
+          <h3 data-i18n="lobby.gameRooms">Game Rooms</h3>
           <div id="roomList" class="list"></div>
         </div>
       </section>
@@ -150,145 +199,147 @@
       <!-- Single persistent left panel -->
       <aside id="roomPanel" class="panel room-panel">
 
-        <!-- Always: room info & actions -->
+        <!-- Room header: title + small lang picker so it stays accessible after the nav hides -->
         <div class="room-info-block">
-          <div class="room-title">Room <span id="roomLabel">--</span></div>
+          <div class="room-title">
+            <span data-i18n="room.label">Room</span> <span id="roomLabel">--</span>
+            <div id="roomLangPicker" class="lang-picker lang-picker-sm" role="group" aria-label="Language">
+              <button type="button" class="lang-btn" data-lang-set="en">EN</button>
+              <button type="button" class="lang-btn" data-lang-set="zh">中</button>
+              <button type="button" class="lang-btn" data-lang-set="ja">日</button>
+              <button type="button" class="lang-btn" data-lang-set="ko">한</button>
+            </div>
+          </div>
           <div class="room-meta">
-            <span id="roomRole">Spectator</span>
+            <span id="roomRole" data-i18n="room.spectator">Spectator</span>
             <span id="roomMembers">0 players</span>
           </div>
         </div>
         <div class="room-actions-block">
           <select id="inviteTarget"></select>
           <div class="room-actions-row">
-            <button id="inviteSend" class="ghost-btn">Invite</button>
-            <button id="leaveRoomBtn" class="primary-btn">Leave Room</button>
+            <button id="inviteSend" class="ghost-btn" data-i18n="room.invite">Invite</button>
+            <button id="leaveRoomBtn" class="primary-btn" data-i18n="room.leave">Leave Room</button>
           </div>
         </div>
 
         <!-- Back button: shown in game states, hidden in room menu -->
-        <button id="backToMenuBtn" class="panel-back-btn" style="display:none;">← Room Menu</button>
+        <button id="backToMenuBtn" class="panel-back-btn" style="display:none;" data-i18n="room.backToMenu">← Room Menu</button>
 
         <!-- SECTION: Room Menu -->
         <div id="sectionRoomMenu">
-          <h3 class="panel-section-title">Game Options</h3>
           <!-- shown only to room owner -->
           <div id="ownerGameOptions">
             <div class="panel-buttons">
-              <button class="panel-btn" id="menuRandomGoban">隨機棋盤<br><span>Play at Random Goban</span></button>
-              <button class="panel-btn" id="menuPresetGoban">從預設棋盤中選擇<br><span>Choose from Preset Gobans</span></button>
-              <button class="panel-btn" id="menuDesignGoban">設計自己的棋盤<br><span>Design Your Own Goban</span></button>
-              <button class="panel-btn" id="menuLoadGoban">載入棋盤<br><span>Load Goban</span></button>
-              <button class="panel-btn" id="menuGameReview">觀看對局記錄<br><span>Review Game Records</span></button>
-              <button class="panel-btn" id="menuSettings">設定<br><span>Settings</span></button>
-            </div>
-            <div class="panel-aux">
-              <button id="saveRecordBtn" class="ghost-btn">Save Record Online</button>
-              <button id="loadRecordBtn" class="ghost-btn">Load Saved Record</button>
+              <button class="panel-btn" id="menuPresetGoban" data-i18n="room.menu.preset">Preset Gobans</button>
+              <button class="panel-btn" id="menuRandomGoban" data-i18n="room.menu.random">Random Goban</button>
+              <button class="panel-btn" id="menuDesignGoban" data-i18n="room.menu.design">Design Your Own Goban</button>
+              <button class="panel-btn" id="menuLoadGoban" data-i18n="room.menu.load">Load Goban</button>
+              <button class="panel-btn" id="menuGameReview" data-i18n="room.menu.review">Review Game Records</button>
+              <button class="panel-btn" id="menuSettings" data-i18n="room.menu.settings">Settings</button>
             </div>
           </div>
           <!-- shown only to non-owner members -->
           <div id="nonOwnerWaiting" style="display:none;" class="panel-info">
-            Waiting for the host to set up the game.
-            <br><span style="opacity:.6;">You'll receive the board automatically once they start.</span>
+            <span data-i18n="room.waiting1">Waiting for the host to set up the game.</span>
+            <br><span style="opacity:.6;" data-i18n="room.waiting2">You'll receive the board automatically once they start.</span>
           </div>
         </div>
 
         <!-- SECTION: Random Goban Generation -->
         <div id="sectionRandom" style="display:none;">
-          <h3 class="panel-section-title">Random Goban</h3>
-          <div id="randomStatus" class="panel-status">Generating goban...</div>
+          <h3 class="panel-section-title" data-i18n="random.title">Random Goban</h3>
+          <div id="randomStatus" class="panel-status" data-i18n="random.generating">Generating goban...</div>
           <div class="panel-buttons">
-            <button id="regenerateBtn" class="panel-btn" style="display:none;">Generate Another</button>
-            <button id="acceptRandomBtn" class="panel-btn accent" style="display:none;">Accept &amp; Play</button>
+            <button id="regenerateBtn" class="panel-btn" style="display:none;" data-i18n="random.generateAnother">Generate Another</button>
+            <button id="acceptRandomBtn" class="panel-btn accent" style="display:none;" data-i18n="random.acceptPlay">Accept &amp; Play</button>
           </div>
         </div>
 
         <!-- SECTION: Editor Mode -->
         <div id="sectionEdit" style="display:none;">
-          <h3 class="panel-section-title">Editor Mode</h3>
+          <h3 class="panel-section-title" data-i18n="editor.title">Editor Mode</h3>
           <div class="panel-buttons">
-            <button id="moveModeBtn" class="panel-btn">Move Vertex [v]</button>
-            <button id="deleteEdgeModeBtn" class="panel-btn">Delete Edge [e]</button>
-            <button id="selectModeBtn" class="panel-btn">Select [s]</button>
+            <button id="moveModeBtn" class="panel-btn" data-i18n="editor.moveVertex">Move Vertex [v]</button>
+            <button id="deleteEdgeModeBtn" class="panel-btn" data-i18n="editor.deleteEdge">Delete Edge [e]</button>
+            <button id="selectModeBtn" class="panel-btn" data-i18n="editor.select">Select [s]</button>
           </div>
-          <div class="panel-info">Goban Size</div>
+          <div class="panel-info" data-i18n="editor.gobanSize">Goban Size</div>
           <div class="panel-row">
             <button id="sizeBtn6" class="panel-btn-sm">6</button>
             <button id="sizeBtn8" class="panel-btn-sm">8</button>
             <button id="sizeBtn10" class="panel-btn-sm">10</button>
           </div>
-          <div class="panel-info">Mode: <span id="mode">move-vertex</span></div>
-          <div class="panel-info">Hover: <span id="hover">none</span></div>
-          <div class="panel-info">Vertices: <span id="vertexCount">0</span> · Tris: <span id="triCount">0</span> · Quads: <span id="quadCount">0</span></div>
+          <div class="panel-info"><span data-i18n="editor.mode">Mode</span>: <span id="mode">move-vertex</span></div>
+          <div class="panel-info"><span data-i18n="editor.hover">Hover</span>: <span id="hover">none</span></div>
+          <div class="panel-info"><span data-i18n="editor.vertices">Vertices</span>: <span id="vertexCount">0</span> · <span data-i18n="editor.tris">Tris</span>: <span id="triCount">0</span> · <span data-i18n="editor.quads">Quads</span>: <span id="quadCount">0</span></div>
           <div class="panel-buttons">
-            <button id="undoBtn" class="panel-btn">Undo [Ctrl+Z]</button>
-            <button id="redoBtn" class="panel-btn">Redo [Ctrl+Shift+Z]</button>
-            <button id="autoRemoveBtn" class="panel-btn">Auto Remove Edges</button>
-            <button id="relaxBtn" class="panel-btn">Relax [r/R]</button>
-            <button id="saveBtn" class="panel-btn">Save Goban</button>
-            <button id="loadBtn" class="panel-btn">Load Goban</button>
+            <button id="undoBtn" class="panel-btn" data-i18n="editor.undo">Undo [Ctrl+Z]</button>
+            <button id="redoBtn" class="panel-btn" data-i18n="editor.redo">Redo [Ctrl+Shift+Z]</button>
+            <button id="autoRemoveBtn" class="panel-btn" data-i18n="editor.autoRemove">Auto Remove Edges</button>
+            <button id="relaxBtn" class="panel-btn" data-i18n="editor.relax">Relax [r/R]</button>
+            <button id="relaxTestBtn" class="panel-btn" data-i18n="editor.relaxTest">Relax (Test)</button>
+            <button id="relaxCoulombBtn" class="panel-btn" data-i18n="editor.relaxCoulomb">Relax (Coulomb)</button>
+            <button id="saveBtn" class="panel-btn" data-i18n="editor.saveGoban">Save Goban</button>
+            <button id="loadBtn" class="panel-btn" data-i18n="editor.loadGoban">Load Goban</button>
             <span id="saveLoadStatus" class="panel-status"></span>
             <span id="undoStatus" class="panel-status"></span>
             <span id="autoRemoveStatus" class="panel-status"></span>
             <span id="relaxStatus" class="panel-status"></span>
-            <button id="playBtn" class="panel-btn accent">Play Go [p/P]</button>
+            <button id="playBtn" class="panel-btn accent" data-i18n="editor.playGo">Play Go [p/P]</button>
           </div>
         </div>
 
         <!-- SECTION: Play Mode -->
         <div id="sectionPlay" style="display:none;">
-          <button id="mobileConfirmBtn" onclick="window.confirmStonePlacement()" style="display:none;" class="primary-btn mobile-confirm-btn">Place Stone ✓</button>
-          <h3 class="panel-section-title">Play Mode</h3>
-          <div class="panel-info">Turn: <strong><span id="gameTurn">Black</span></strong></div>
-          <div class="panel-info">Captured — Black: <span id="capBlack">0</span> · White: <span id="capWhite">0</span></div>
+          <button id="mobileConfirmBtn" onclick="window.confirmStonePlacement()" style="display:none;" class="primary-btn mobile-confirm-btn" data-i18n="play.placeStone">Place Stone ✓</button>
+          <h3 class="panel-section-title" data-i18n="play.title">Play Mode</h3>
+          <div class="panel-info"><span data-i18n="play.turn">Turn</span>: <strong><span id="gameTurn">Black</span></strong></div>
+          <div class="panel-info"><span data-i18n="play.captured">Captured</span> — <span data-i18n="room.black">Black</span>: <span id="capBlack">0</span> · <span data-i18n="room.white">White</span>: <span id="capWhite">0</span></div>
           <span id="gameInfo"></span>
           <div class="panel-buttons">
-            <button id="gameUndoBtn" class="panel-btn">Undo Move</button>
-            <button id="gameRedoBtn" class="panel-btn">Redo Move</button>
+            <button id="gameUndoBtn" class="panel-btn" data-i18n="play.undoMove">Undo Move</button>
+            <button id="gameRedoBtn" class="panel-btn" data-i18n="play.redoMove">Redo Move</button>
             <span id="gameUndoStatus" class="panel-status"></span>
-            <button id="passBtn" class="panel-btn">Pass</button>
-            <button id="aiMoveBtn" class="panel-btn">AI Move</button>
-            <button id="toggleIndicesBtn" class="panel-btn">Show Stone Indices</button>
-            <button id="scoreBtn" class="panel-btn">Score (Tromp-Taylor)</button>
-            <div class="panel-info">Black: <span id="scoreBlack">0</span> · White (+<span id="komiDisplay">7.5</span>): <span id="scoreWhite">0</span> · Neutral: <span id="scoreNeutral">0</span></div>
-            <button id="saveGameBtn" class="panel-btn">Save Game</button>
-            <button id="loadGameBtn" class="panel-btn">Load Game</button>
-            <button id="loadGameReviewBtn" class="panel-btn">Load Game Review</button>
+            <button id="passBtn" class="panel-btn" data-i18n="play.pass">Pass</button>
+            <button id="aiMoveBtn" class="panel-btn" data-i18n="play.aiMove">AI Move</button>
+            <button id="toggleIndicesBtn" class="panel-btn" data-i18n="play.showStoneIndices">Show Stone Indices</button>
+            <button id="scoreBtn" class="panel-btn" data-i18n="play.score">Score (Tromp-Taylor)</button>
+            <div class="panel-info"><span data-i18n="room.black">Black</span>: <span id="scoreBlack">0</span> · <span id="komiLabel">White (+7.5)</span>: <span id="scoreWhite">0</span> · <span data-i18n="play.neutral">Neutral</span>: <span id="scoreNeutral">0</span></div>
+            <button id="saveGameBtn" class="panel-btn" data-i18n="play.saveGame">Save Game</button>
+            <button id="loadGameBtn" class="panel-btn" data-i18n="play.loadGame">Load Game</button>
+            <button id="loadGameReviewBtn" class="panel-btn" data-i18n="play.loadGameReview">Load Game Review</button>
             <span id="gameLoadStatus" class="panel-status"></span>
           </div>
           <div id="gameStatusRow" style="display:none;" class="panel-alert"><span id="gameStatus"></span></div>
           <div id="deadStoneRow" style="display:none;" class="panel-info" style="color:#ff8800;">
-            Click stones to mark dead. <button id="finishMarkingBtn" class="panel-btn">Finish Marking</button>
+            <span data-i18n="play.markDead">Click stones to mark dead.</span> <button id="finishMarkingBtn" class="panel-btn" data-i18n="play.finishMarking">Finish Marking</button>
           </div>
           <div id="resultRow" style="display:none;" class="panel-result"><span id="gameResult"></span></div>
-          <div class="panel-info small">Click a point to place stones. [Ctrl+Z] undo.</div>
+          <div class="panel-info small" data-i18n="play.placeStoneTip">Click a point to place stones. [Ctrl+Z] undo.</div>
         </div>
 
         <!-- Always: room chat -->
         <div class="room-chat-block">
-          <h3 class="panel-section-title">Room Chat</h3>
+          <h3 class="panel-section-title" data-i18n="room.chat">Room Chat</h3>
           <div id="roomChatLog" class="chat-log small-log"></div>
           <div class="chat-input">
-            <input id="roomChatInput" type="text" placeholder="Message the room..." />
-            <button id="roomChatSend" class="primary-btn">Send</button>
+            <input id="roomChatInput" type="text" data-i18n-placeholder="room.chatPlaceholder" placeholder="Message the room..." />
+            <button id="roomChatSend" class="primary-btn" data-i18n="lobby.send">Send</button>
           </div>
         </div>
 
       </aside>
 
       <section class="room-stage">
-        <div id="roomPlaceholder" class="room-placeholder">
-          <h2>Pick a mode from the room menu</h2>
-          <p>Once a board is selected, the room will sync moves for everyone.</p>
-        </div>
+        <div id="roomPlaceholder" class="room-placeholder"></div>
         <main id="app" style="display: none;"></main>
       </section>
     </div>
   </div>
 
   <div id="presetMenu" style="display: none;">
-    <h1>Choose a Preset Goban</h1>
+    <h1 data-i18n="preset.title">Choose a Preset Goban</h1>
     <div class="preset-options">
       <button class="preset-btn" data-preset="shumi">須弥 (Shumi - Mount Sumeru)</button>
       <button class="preset-btn" data-preset="shumi_large">須弥大 (Shumi Large)</button>
@@ -299,51 +350,51 @@
       <button class="preset-btn" data-preset="kimon">奇门 (Kimon - Mystic Gates)</button>
       <button class="preset-btn" data-preset="jingan">陣眼 (Jin-gan - Nexus of the Array)</button>
     </div>
-    <button id="backToMenuFromPreset">Back to Room Menu</button>
+    <button id="backToMenuFromPreset" data-i18n="preset.back">Back to Room Menu</button>
   </div>
 
   <div id="gameReviewModal" style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.7); z-index: 1000; overflow-y: auto; padding: 20px;">
     <div style="background: #2a2a2a; color: #e0e0e0; padding: 20px; border-radius: 8px; max-width: 1000px; margin: 20px auto; max-height: 90vh; overflow-y: auto;">
       <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
-        <h2>Game Review - Inspection</h2>
-        <button id="closeGameReviewBtn" style="padding: 8px 16px; cursor: pointer;">Close</button>
+        <h2 data-i18n="review.title">Game Review - Inspection</h2>
+        <button id="closeGameReviewBtn" style="padding: 8px 16px; cursor: pointer;" data-i18n="review.close">Close</button>
       </div>
-      
+
       <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px;">
         <div>
-          <h3>Available Games</h3>
+          <h3 data-i18n="review.available">Available Games</h3>
           <div id="gameReviewList" style="border: 1px solid #444; padding: 10px; border-radius: 4px; max-height: 400px; overflow-y: auto;">
-            <div style="color: #888;">Loading games...</div>
+            <div style="color: #888;" data-i18n="review.loadingGames">Loading games...</div>
           </div>
         </div>
-        
+
         <div>
-          <h3>Game Details</h3>
+          <h3 data-i18n="review.details">Game Details</h3>
           <div id="gameReviewDetails" style="border: 1px solid #444; padding: 15px; border-radius: 4px;">
-            <div style="color: #888;">Select a game to view details</div>
+            <div style="color: #888;" data-i18n="review.selectToView">Select a game to view details</div>
           </div>
         </div>
       </div>
-      
+
       <div id="gameReviewPlayback" style="display: none; margin-top: 20px; padding-top: 20px; border-top: 1px solid #444;">
-        <h3>Select game to load and view on board</h3>
+        <h3 data-i18n="review.selectToLoad">Select game to load and view on board</h3>
         <div style="display: flex; gap: 10px; margin-bottom: 10px; align-items: center;">
-          <button id="reviewFirstBtn" style="padding: 8px 16px; cursor: pointer;">⏮ First</button>
-          <button id="reviewPrevBtn" style="padding: 8px 16px; cursor: pointer;">◀ Prev</button>
-          <button id="reviewPlayBtn" style="padding: 8px 16px; cursor: pointer;">▶ Play</button>
-          <button id="reviewPauseBtn" style="padding: 8px 16px; cursor: pointer;">⏸ Pause</button>
-          <button id="reviewNextBtn" style="padding: 8px 16px; cursor: pointer;">▶ Next</button>
-          <button id="reviewLastBtn" style="padding: 8px 16px; cursor: pointer;">⏭ Last</button>
+          <button id="reviewFirstBtn" style="padding: 8px 16px; cursor: pointer;" data-i18n="review.first">⏮ First</button>
+          <button id="reviewPrevBtn" style="padding: 8px 16px; cursor: pointer;" data-i18n="review.prev">◀ Prev</button>
+          <button id="reviewPlayBtn" style="padding: 8px 16px; cursor: pointer;" data-i18n="review.play">▶ Play</button>
+          <button id="reviewPauseBtn" style="padding: 8px 16px; cursor: pointer;" data-i18n="review.pause">⏸ Pause</button>
+          <button id="reviewNextBtn" style="padding: 8px 16px; cursor: pointer;" data-i18n="review.next">▶ Next</button>
+          <button id="reviewLastBtn" style="padding: 8px 16px; cursor: pointer;" data-i18n="review.last">⏭ Last</button>
           <span id="moveCounter" style="margin-left: 20px; font-weight: bold;">Move: 0/0</span>
         </div>
         <input type="range" id="moveSlider" style="width: 100%; cursor: pointer;" min="0" max="100" value="0">
         <div style="margin-top: 10px; display: flex; gap: 10px; align-items: center;">
-          <label>Speed:</label>
+          <label data-i18n="review.speed">Speed:</label>
           <input type="range" id="speedSlider" min="100" max="2000" value="800" step="100" style="width: 200px;">
           <span id="speedDisplay">0.8s/move</span>
         </div>
         <div id="currentBoardState" style="margin-top: 15px; padding: 10px; background: #1a1a1a; border-radius: 4px; font-size: 13px;">
-          <div style="color: #888;">Select a game above to load it</div>
+          <div style="color: #888;" data-i18n="review.selectAbove">Select a game above to load it</div>
         </div>
       </div>
     </div>
@@ -353,19 +404,19 @@
   <div id="gameRulesModal" class="modal" style="display:none;">
     <div class="modal-card">
       <div class="modal-header">
-        <h3 style="margin:0;font-family:'Fraunces',serif;">Game Rules</h3>
+        <h3 style="margin:0;font-family:'Fraunces',serif;" data-i18n="rules.title">Game Rules</h3>
         <button id="gameRulesClose" class="icon-btn">✕</button>
       </div>
       <div class="auth-form" style="margin-top:14px;">
-        <label style="font-size:12px;opacity:.65;">Komi — White's compensation points</label>
+        <label style="font-size:12px;opacity:.65;" data-i18n="rules.komi">Komi — White's compensation points</label>
         <input id="komiInput" type="number" step="0.5" value="7.5" min="0" max="30" />
-        <label style="font-size:12px;opacity:.65;margin-top:10px;">Color Assignment</label>
+        <label style="font-size:12px;opacity:.65;margin-top:10px;" data-i18n="rules.colorMode">Color Assignment</label>
         <select id="colorModeSelect">
-          <option value="owner-black">You (owner) = ⚫ Black · Opponent = ⚪ White</option>
-          <option value="owner-white">You (owner) = ⚪ White · Opponent = ⚫ Black</option>
-          <option value="study">Study / Review — both players can move either color</option>
+          <option value="owner-black" data-i18n="rules.ownerBlack">You (owner) = ⚫ Black · Opponent = ⚪ White</option>
+          <option value="owner-white" data-i18n="rules.ownerWhite">You (owner) = ⚪ White · Opponent = ⚫ Black</option>
+          <option value="study" data-i18n="rules.study">Study / Review — both players can move either color</option>
         </select>
-        <button id="gameRulesConfirm" class="primary-btn" style="margin-top:18px;">Start Game</button>
+        <button id="gameRulesConfirm" class="primary-btn" style="margin-top:18px;" data-i18n="rules.start">Start Game</button>
       </div>
     </div>
   </div>

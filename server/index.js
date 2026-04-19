@@ -1,4 +1,5 @@
 const path = require('path');
+require('dotenv').config({ path: path.join(__dirname, '..', '.env') });
 const http = require('http');
 const crypto = require('crypto');
 const express = require('express');
@@ -16,6 +17,9 @@ const {
   createGame,
   listGamesByUser,
   getGameById,
+  createGoban,
+  listGobans,
+  getGobanById,
   createPasswordReset,
   getPasswordReset,
   markPasswordResetUsed,
@@ -246,6 +250,43 @@ app.post('/api/games', requireAuth, (req, res) => {
   return res.json({ id });
 });
 
+app.get('/api/gobans', (req, res) => {
+  const user = getUserFromRequest(req);
+  const filter = (req.query.filter || 'all').toString();
+  const query = (req.query.q || '').toString();
+  const rows = listGobans({ filter, query, userId: user?.id ?? null }).map((g) => ({
+    id: g.id,
+    name: g.name,
+    creator: g.creator || (g.official ? 'official' : 'guest'),
+    official: !!g.official,
+    isMine: user ? g.user_id === user.id : false,
+    createdAt: g.created_at,
+  }));
+  return res.json({ gobans: rows });
+});
+
+app.get('/api/gobans/:id', (req, res) => {
+  const goban = getGobanById(Number(req.params.id));
+  if (!goban) return res.status(404).json({ message: 'Not found.' });
+  return res.json({
+    id: goban.id,
+    name: goban.name,
+    creator: goban.creator || (goban.official ? 'official' : 'guest'),
+    official: !!goban.official,
+    createdAt: goban.created_at,
+    data: JSON.parse(goban.data),
+  });
+});
+
+app.post('/api/gobans', requireAuth, (req, res) => {
+  const { name, data } = req.body || {};
+  if (!name || !data) {
+    return res.status(400).json({ message: 'Missing name or data.' });
+  }
+  const id = createGoban({ userId: req.user.id, name: String(name).slice(0, 80), data });
+  return res.json({ id });
+});
+
 const onlineUsers = new Map();
 const rooms = new Map();
 
@@ -309,9 +350,119 @@ function createRoom(name, socket, user) {
     count: 1,
     gameState: null,
     rules: null,             // set by room:setRules
+    record: null,            // active game record, managed by beginRoomRecord/finalizeRoomRecord
   };
   rooms.set(roomId, room);
   joinRoom(roomId, socket, user, true);
+}
+
+// ---- Game record lifecycle (multiplayer, server-authoritative) ----
+
+function participantInfoForRoom(room) {
+  // Map colors (as set by the current rules) to { socketId, userId, username }.
+  // players[0] is the room owner (joined first), players[1] is the opponent.
+  // For study mode (either can play either color) we still label them for the
+  // record name: owner -> black slot, opponent -> white slot.
+  const rules = room.rules || { colorMode: 'owner-black' };
+  const ownerColor = rules.colorMode === 'owner-white' ? 'white' : 'black';
+  const opponentColor = ownerColor === 'black' ? 'white' : 'black';
+
+  const info = { black: null, white: null };
+  const slots = [
+    { socketId: room.players[0], color: ownerColor },
+    { socketId: room.players[1], color: opponentColor },
+  ];
+  for (const { socketId, color } of slots) {
+    if (!socketId) continue;
+    const client = onlineUsers.get(socketId);
+    if (!client) continue;
+    info[color] = {
+      socketId,
+      userId: client.userId || null,
+      username: client.name,
+    };
+  }
+  return info;
+}
+
+function beginRoomRecord(room, initialGoban) {
+  // Finalize any in-flight record first (handles new game in same room).
+  if (room.record && room.record.active) {
+    finalizeRoomRecord(room, null, 'superseded');
+  }
+  const rules = room.rules || { komi: 7.5, colorMode: 'owner-black' };
+  const players = participantInfoForRoom(room);
+  room.record = {
+    active: true,
+    startedAt: new Date().toISOString(),
+    initialGoban,
+    moves: [],
+    komi: rules.komi,
+    colorMode: rules.colorMode,
+    players,
+  };
+  console.log(`[record] START  room="${room.name}" black=${players.black?.username || '-'} white=${players.white?.username || '-'} komi=${rules.komi} mode=${rules.colorMode}`);
+}
+
+function appendRoomMove(room, move) {
+  if (!room.record || !room.record.active) return;
+  room.record.moves.push({ ...move, ts: Date.now() });
+  console.log(`[record] move  room="${room.name}" #${room.record.moves.length} ${move.type}${move.vid != null ? ' vid=' + move.vid : ''}${move.color ? ' ' + move.color : ''}`);
+}
+
+function finalizeRoomRecord(room, result, endReason) {
+  const rec = room.record;
+  if (!rec || !rec.active) return;
+  rec.active = false;
+
+  const endedAt = new Date();
+  const dateStr = endedAt.toISOString().slice(0, 10);                     // YYYY-MM-DD
+  const timeStr = endedAt.toTimeString().slice(0, 5).replace(':', '-');   // HH-MM
+  const blackName = rec.players.black?.username;
+  const whiteName = rec.players.white?.username;
+  let who;
+  if (blackName && whiteName) {
+    who = `${blackName}_${whiteName}`;
+  } else if (blackName || whiteName) {
+    who = `${blackName || whiteName}_singleplayer`;
+  } else {
+    who = 'game';
+  }
+  const name = `${who}_${dateStr}_${timeStr}`;
+
+  const data = {
+    version: 1,
+    type: 'game-record',
+    room: room.name,
+    startedAt: rec.startedAt,
+    endedAt: endedAt.toISOString(),
+    endReason,                // 'consent' | 'disconnect' | 'superseded'
+    result: result || null,   // { winner, diff, blackTotal, whiteTotal, ... } or null
+    komi: rec.komi,
+    colorMode: rec.colorMode,
+    players: rec.players,
+    initialGoban: rec.initialGoban,
+    moves: rec.moves,
+  };
+
+  // Save once per distinct authenticated participant.
+  const savedUserIds = new Set();
+  for (const color of ['black', 'white']) {
+    const p = rec.players[color];
+    if (p?.userId && !savedUserIds.has(p.userId)) {
+      try {
+        createGame({ userId: p.userId, name, data });
+        savedUserIds.add(p.userId);
+      } catch (err) {
+        console.error('Failed to save game record for user', p.userId, err.message);
+      }
+    }
+  }
+
+  console.log(`[record] END    room="${room.name}" name="${name}" reason=${endReason} moves=${rec.moves.length} saved_for=${savedUserIds.size > 0 ? Array.from(savedUserIds).join(',') : '(guests only — not persisted)'}`);
+
+  // Tell participants the record was persisted so their UI can refresh.
+  io.to(room.id).emit('game:recordSaved', { name, endReason });
 }
 
 function joinRoom(roomId, socket, user, isHost = false) {
@@ -484,19 +635,46 @@ io.on('connection', (socket) => {
   socket.on('game:state', (payload) => {
     const room = rooms.get(payload?.roomId);
     if (!room || !payload?.state) return;
-    // Store latest state so late-joining players receive it via room:state in joinRoom
+    // The first state broadcast after rules are set = game start.
+    // Start the record, then let subsequent broadcasts just update gameState for late joiners.
+    const isFirstSnapshot = !room.gameState || !room.record || !room.record.active;
+    const isHost = socket.id === room.hostId;
+    const hasRules = !!room.rules;
     room.gameState = payload.state;
-    // Broadcast to others so they receive the initial board setup
+    if (isFirstSnapshot && hasRules && isHost) {
+      beginRoomRecord(room, payload.state);
+    } else if (isFirstSnapshot) {
+      console.log(`[record] game:state received but NOT starting — host=${isHost} hasRules=${hasRules} firstSnapshot=${isFirstSnapshot}`);
+    }
     socket.to(room.id).emit('room:state', { roomId: room.id, state: room.gameState });
   });
 
   socket.on('game:move', (payload) => {
     const room = rooms.get(payload?.roomId);
     if (!room || !payload?.move) return;
+    if (!room.record?.active) {
+      console.log(`[record] game:move received but no active record for room "${room.name}" — move ignored by record`);
+    }
+    appendRoomMove(room, payload.move);
     socket.to(room.id).emit('game:move', payload);
   });
 
+  socket.on('game:end', (payload) => {
+    const room = rooms.get(payload?.roomId);
+    if (!room) return;
+    console.log(`[record] game:end received for room "${room.name}"`);
+    finalizeRoomRecord(room, payload?.result || null, 'consent');
+  });
+
   socket.on('disconnect', () => {
+    // Finalize any in-flight record for this socket's room BEFORE leaveRoom mutates players[].
+    const client = onlineUsers.get(socket.id);
+    if (client?.roomId) {
+      const room = rooms.get(client.roomId);
+      if (room?.record?.active) {
+        finalizeRoomRecord(room, null, 'disconnect');
+      }
+    }
     leaveRoom(socket);
     onlineUsers.delete(socket.id);
     broadcastPresence();

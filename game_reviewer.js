@@ -10,7 +10,6 @@ let reviewGameRecord = null; // Store original game record for review
 
 document.addEventListener('DOMContentLoaded', () => {
   const loadGameReviewBtn = document.getElementById('loadGameReviewBtn');
-  const menuGameReviewBtn = document.getElementById('menuGameReview');
   const closeGameReviewBtn = document.getElementById('closeGameReviewBtn');
   const reviewPlayBtn = document.getElementById('reviewPlayBtn');
   const reviewPauseBtn = document.getElementById('reviewPauseBtn');
@@ -23,9 +22,6 @@ document.addEventListener('DOMContentLoaded', () => {
 
   if (loadGameReviewBtn) {
     loadGameReviewBtn.addEventListener('click', openGameReviewModal);
-  }
-  if (menuGameReviewBtn) {
-    menuGameReviewBtn.addEventListener('click', openGameReviewModal);
   }
   if (closeGameReviewBtn) {
     closeGameReviewBtn.addEventListener('click', closeGameReviewModal);

@@ -36,6 +36,7 @@ let relaxing = false;
 let relaxFrame = 0;
 let relaxMaxFrames = 20;
 let relaxationStrength = spacing * 0.0008; // Scale relative to grid spacing (50 * 0.0008 = 0.04)
+let relaxMode = 'standard'; // 'standard' | 'compensated' | 'coulomb'
 let whi = null; // whitehole image
 let bhi = null; // blackhole image
 let woodTexture = null; // wood texture for goban border
@@ -127,19 +128,46 @@ function setupMenuListeners() {
   document.getElementById('menuDesignGoban')?.addEventListener('click', startDesignMode);
   document.getElementById('menuLoadGoban')?.addEventListener('click', startLoadGoban);
   document.getElementById('menuSettings')?.addEventListener('click', showSettings);
-  
+
   // Preset menu
   document.querySelectorAll('.preset-btn').forEach(btn => {
     btn.addEventListener('click', (e) => loadPresetGoban(e.target.dataset.preset));
   });
   document.getElementById('backToMenuFromPreset')?.addEventListener('click', showMainMenu);
-  
+
   // Random menu
   document.getElementById('regenerateBtn')?.addEventListener('click', generateRandomGoban);
   document.getElementById('acceptRandomBtn')?.addEventListener('click', acceptRandomGoban);
-  
+
   // Editor buttons
   document.getElementById('backToMenuBtn')?.addEventListener('click', showMainMenu);
+
+  // Play-mode buttons — wired once here so their handlers survive any DOM
+  // text updates (e.g. i18n language changes). Per-game state (enable/disable,
+  // label toggles) still happens in setupPlayButtons().
+  document.getElementById('gameUndoBtn')?.addEventListener('click', undoStep);
+  document.getElementById('gameRedoBtn')?.addEventListener('click', redoStep);
+  document.getElementById('saveGameBtn')?.addEventListener('click', saveGame);
+  document.getElementById('loadGameBtn')?.addEventListener('click', loadGame);
+  document.getElementById('passBtn')?.addEventListener('click', () => handlePass(false));
+  document.getElementById('finishMarkingBtn')?.addEventListener('click', finishMarkingDeadStones);
+  document.getElementById('scoreBtn')?.addEventListener('click', () => {
+    const score = computeTrompTaylorScore();
+    renderScore(score);
+  });
+  document.getElementById('toggleIndicesBtn')?.addEventListener('click', () => {
+    const btn = document.getElementById('toggleIndicesBtn');
+    showStoneIndices = !showStoneIndices;
+    if (btn) btn.textContent = window.t ? t(showStoneIndices ? 'play.hideStoneIndices' : 'play.showStoneIndices') : (showStoneIndices ? 'Hide Stone Indices' : 'Show Stone Indices');
+    redraw();
+  });
+  document.getElementById('aiMoveBtn')?.addEventListener('click', async () => {
+    if (hexGoAI.thinking || gameEnded) return;
+    markLocalRecordUsedAI();
+    const move = await hexGoAI.makeMove(2000);
+    if (move === 'pass') handlePass(false);
+    else placeStone(move);
+  });
 }
 
 // Switch visible section inside the single room panel
@@ -234,7 +262,7 @@ function generateRandomGoban() {
   hexRadius = 10; // Use standard size (9 vertices per edge)
   buildGrid();
   
-  document.getElementById('randomStatus').textContent = 'Generating goban...';
+  document.getElementById('randomStatus').textContent = (window.t ? t('random.generating') : 'Generating goban...');
   document.getElementById('regenerateBtn').style.display = 'none';
   document.getElementById('acceptRandomBtn').style.display = 'none';
   
@@ -250,7 +278,7 @@ function generateRandomGoban() {
     
     // After relaxation completes, show buttons
     setTimeout(() => {
-      document.getElementById('randomStatus').textContent = 'Goban generated!';
+      document.getElementById('randomStatus').textContent = (window.t ? t('random.generated') : 'Goban generated!');
       document.getElementById('regenerateBtn').style.display = 'inline-block';
       document.getElementById('acceptRandomBtn').style.display = 'inline-block';
     }, 30 * 50); // Approximate time for 30 frames
@@ -315,7 +343,7 @@ function loadPresetGoban(presetName) {
 
   const filePath = presetFiles[presetName];
   if (!filePath) {
-    alert(`Preset "${presetName}" not found`);
+    alert(window.t ? t('alert.presetNotFound', { name: presetName }) : `Preset "${presetName}" not found`);
     showMainMenu();
     return;
   }
@@ -346,14 +374,14 @@ function loadPresetGoban(presetName) {
       });
     })
     .catch(err => {
-      alert(`Error loading preset: ${err.message}`);
+      alert(window.t ? t('alert.presetLoadError', { message: err.message }) : `Error loading preset: ${err.message}`);
       showMainMenu();
     });
 }
 
 function showSettings() {
   // Settings screen - placeholder for now
-  alert('Settings - coming soon');
+  alert(window.t ? t('alert.settingsComingSoon') : 'Settings - coming soon');
 }
 
 function changeGobanSize(newRadius) {
@@ -409,6 +437,14 @@ function setupEditorButtons() {
   if (relaxBtn) {
     relaxBtn.addEventListener('click', startRelaxation);
   }
+  const relaxTestBtn = document.getElementById('relaxTestBtn');
+  if (relaxTestBtn) {
+    relaxTestBtn.addEventListener('click', startRelaxationTest);
+  }
+  const relaxCoulombBtn = document.getElementById('relaxCoulombBtn');
+  if (relaxCoulombBtn) {
+    relaxCoulombBtn.addEventListener('click', startRelaxationCoulomb);
+  }
   
   // Wire up undo/redo buttons
   const undoBtn = document.getElementById('undoBtn');
@@ -438,58 +474,18 @@ function setupEditorButtons() {
 }
 
 function setupPlayButtons() {
-  const undoBtn = document.getElementById('gameUndoBtn');
-  const redoBtn = document.getElementById('gameRedoBtn');
-  const saveGameBtn = document.getElementById('saveGameBtn');
-  const loadGameBtn = document.getElementById('loadGameBtn');
-  const toggleIndicesBtn = document.getElementById('toggleIndicesBtn');
-  const scoreBtn = document.getElementById('scoreBtn');
-  const passBtn = document.getElementById('passBtn');
+  // Handlers are wired once in setupMenuListeners(). Only refresh per-game
+  // state here (enable/disable, multiplayer-conditional labels).
+  saveLoadStatusEl = document.getElementById('gameLoadStatus');
   const aiMoveBtn = document.getElementById('aiMoveBtn');
-  const finishMarkingBtn = document.getElementById('finishMarkingBtn');
-
-  if (undoBtn) undoBtn.onclick = undoStep;
-  if (redoBtn) redoBtn.onclick = redoStep;
-  if (saveGameBtn) saveGameBtn.onclick = saveGame;
-  if (loadGameBtn) {
-    saveLoadStatusEl = document.getElementById('gameLoadStatus');
-    loadGameBtn.onclick = loadGame;
-  }
-  if (toggleIndicesBtn) {
-    toggleIndicesBtn.onclick = () => {
-      showStoneIndices = !showStoneIndices;
-      toggleIndicesBtn.textContent = showStoneIndices ? 'Hide Stone Indices' : 'Show Stone Indices';
-      redraw();
-    };
-  }
-  if (passBtn) {
-    passBtn.onclick = () => handlePass(false);
-  }
   if (aiMoveBtn) {
-    aiMoveBtn.onclick = async () => {
-      if (hexGoAI.thinking || gameEnded) return;
-      const move = await hexGoAI.makeMove(2000); // Increased to 2000 iterations
-      if (move === 'pass') {
-        handlePass(false);
-      } else {
-        placeStone(move);
-      }
-    };
     if (window.multiplayerState?.active) {
       aiMoveBtn.disabled = true;
-      aiMoveBtn.textContent = 'AI Move (offline)';
+      aiMoveBtn.textContent = window.t ? t('play.aiMoveOffline') : 'AI Move (offline)';
+    } else {
+      aiMoveBtn.disabled = false;
     }
   }
-  if (finishMarkingBtn) {
-    finishMarkingBtn.onclick = finishMarkingDeadStones;
-  }
-  if (scoreBtn) {
-    scoreBtn.onclick = () => {
-      const score = computeTrompTaylorScore();
-      renderScore(score);
-    };
-  }
-
   updateUndoUI();
 }
 
@@ -533,7 +529,7 @@ function saveGame() {
 
   const fname = `game_${Date.now()}.json`;
   saveJSON(data, fname);
-  if (saveLoadStatusEl) saveLoadStatusEl.textContent = `Saved ${fname}`;
+  if (saveLoadStatusEl) saveLoadStatusEl.textContent = window.t ? t('play.savedAs', { name: fname }) : `Saved ${fname}`;
 }
 
 function loadGame() {
@@ -560,13 +556,13 @@ function loadGame() {
           updateGameUI();
           redraw();
           if (window.multiplayerSyncState) window.multiplayerSyncState();
-          if (saveLoadStatusEl) saveLoadStatusEl.textContent = 'Game loaded';
+          if (saveLoadStatusEl) saveLoadStatusEl.textContent = window.t ? t('play.gameLoaded') : 'Game loaded';
         } else {
-          if (saveLoadStatusEl) saveLoadStatusEl.textContent = 'Not a game file';
+          if (saveLoadStatusEl) saveLoadStatusEl.textContent = window.t ? t('play.notAGameFile') : 'Not a game file';
         }
       } catch (e) {
         console.error('Failed to load game', e);
-        if (saveLoadStatusEl) saveLoadStatusEl.textContent = 'Load failed';
+        if (saveLoadStatusEl) saveLoadStatusEl.textContent = window.t ? t('play.loadFailed') : 'Load failed';
       }
     }
     picker.remove();
@@ -596,20 +592,51 @@ function restoreGameFromData(data) {
   gameUndoIndex = data.gameUndoIndex;
 }
 
+let _resizeRaf = null;
 function windowResized() {
-  if (canvasCreated) {
+  if (!canvasCreated) {
+    refreshViewportUi();
+    return;
+  }
+  if (_resizeRaf) cancelAnimationFrame(_resizeRaf);
+  _resizeRaf = requestAnimationFrame(() => {
+    _resizeRaf = null;
     const oldCX = width / 2;
     const oldCY = height / 2;
     ensureCanvas();
-    const dx = width / 2 - oldCX;
-    const dy = height / 2 - oldCY;
-    if ((dx !== 0 || dy !== 0) && vertices.length > 0) {
-      for (const v of vertices) {
-        v.x += dx;
-        v.y += dy;
+    if (vertices.length > 0) {
+      // In play mode (or after a board has been laid out) keep the goban
+      // centered and fit to the new viewport. In editor mode, preserve the
+      // user's in-progress layout by only shifting to keep it centered.
+      if (currentScreen === 'play' || currentScreen === 'random') {
+        centerAndFitGoban();
+      } else {
+        const dx = width / 2 - oldCX;
+        const dy = height / 2 - oldCY;
+        if (dx !== 0 || dy !== 0) {
+          for (const v of vertices) {
+            v.x += dx;
+            v.y += dy;
+          }
+          for (const e of edges) {
+            if (!e.active) continue;
+            const a = vertices[e.a];
+            const b = vertices[e.b];
+            if (a && b) e.mid = { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 };
+          }
+        }
       }
     }
+    refreshViewportUi();
     redraw();
+  });
+}
+
+// Refresh viewport-dependent UI bits (mobile confirm button, etc.)
+function refreshViewportUi() {
+  const confirmBtn = document.getElementById('mobileConfirmBtn');
+  if (confirmBtn) {
+    confirmBtn.style.display = (currentScreen === 'play' && windowWidth <= 600) ? 'block' : 'none';
   }
 }
 
@@ -630,9 +657,12 @@ function draw() {
     relaxFrame++;
     updateRelaxStatus();
     if (relaxFrame < relaxMaxFrames) {
-      relaxVertices(1); // single iteration per frame
+      if (relaxMode === 'compensated') relaxVerticesCompensated(1);
+      else if (relaxMode === 'coulomb') relaxVerticesCoulomb(1);
+      else relaxVertices(1);
     } else {
       relaxing = false;
+      relaxMode = 'standard';
       relaxFrame = 0;
       updateRelaxStatus();
       updateUiCounts();
@@ -664,7 +694,7 @@ function draw() {
       } else {
         // Max retries exceeded, revert completely
         autoRemoving = false;
-        alert(`Failed to achieve full quads after ${autoRemoveMaxRetries} attempts. Reverting.`);
+        alert(window.t ? t('alert.autoRemoveFail', { n: autoRemoveMaxRetries }) : `Failed to achieve full quads after ${autoRemoveMaxRetries} attempts. Reverting.`);
         restoreSnapshot(autoRemoveStartSnapshot);
         autoRemoveStartSnapshot = null;
         updateAutoRemoveStatus();
@@ -936,7 +966,7 @@ function handlePass(isRemote = false) {
     gameEnded = true;
     markingDeadStones = true;
     document.getElementById('gameStatusRow').style.display = 'block';
-    document.getElementById('gameStatus').textContent = 'Game ended. Mark dead stones.';
+    document.getElementById('gameStatus').textContent = window.t ? t('play.gameEnded') : 'Game ended. Mark dead stones.';
     document.getElementById('deadStoneRow').style.display = 'block';
     console.log('Game ended - both players passed. Mark dead stones.');
   } else {
@@ -948,6 +978,7 @@ function handlePass(isRemote = false) {
   if (!isRemote && window.multiplayerSendPass) {
     window.multiplayerSendPass();
   }
+  if (!isRemote) appendLocalMove({ type: 'pass' });
 }
 
 function toggleDeadStone(vid) {
@@ -975,11 +1006,27 @@ function finishMarkingDeadStones() {
   markingDeadStones = false;
   document.getElementById('deadStoneRow').style.display = 'none';
   document.getElementById('gameStatusRow').style.display = 'none';
-  
+
   // Automatically compute and display final score
   const score = computeTrompTaylorScore();
   renderScore(score);
   redraw();
+
+  // Persist the finished record. Multiplayer games are saved by the server;
+  // solo games POST directly via saveLocalRecord.
+  const result = {
+    blackTotal: score.blackTotal,
+    whiteTotal: score.whiteTotal,
+    diff: Math.abs(score.blackTotal - score.whiteTotal),
+    winner: score.blackTotal === score.whiteTotal ? 'tie'
+          : score.blackTotal > score.whiteTotal ? 'black' : 'white',
+    komi: score.komi,
+  };
+  if (window.multiplayerState?.active) {
+    if (window.multiplayerSendGameEnd) window.multiplayerSendGameEnd(result);
+  } else {
+    saveLocalRecord(result);
+  }
 }
 
 function keyPressed() {
@@ -1375,14 +1422,40 @@ function updateUiCounts() {
 function startRelaxation() {
   const triCount = triangles.filter((t) => t.active).length;
   if (triCount > 0) {
-    alert('Relaxation only available when all faces are quads (no triangles).');
+    alert(window.t ? t('alert.relaxOnlyQuads') : 'Relaxation only available when all faces are quads (no triangles).');
     return;
   }
   captureState('relaxation');
+  relaxMode = 'standard';
   relaxing = true;
   relaxFrame = 0;
   updateRelaxStatus();
   loop(); // kick off the draw loop so relaxation animates without waiting for mouse movement
+}
+
+function startRelaxationTest() {
+  const triCount = triangles.filter((t) => t.active).length;
+  if (triCount > 0) {
+    alert(window.t ? t('alert.relaxOnlyQuads') : 'Relaxation only available when all faces are quads (no triangles).');
+    return;
+  }
+  captureState('relaxation');
+  relaxMode = 'compensated';
+  relaxing = true;
+  relaxFrame = 0;
+  updateRelaxStatus();
+  loop();
+}
+
+function startRelaxationCoulomb() {
+  // Coulomb mode works regardless of face types — it operates only on
+  // vertices and active edges, so triangles are fine.
+  captureState('relaxation');
+  relaxMode = 'coulomb';
+  relaxing = true;
+  relaxFrame = 0;
+  updateRelaxStatus();
+  loop();
 }
 
 function updateRelaxStatus() {
@@ -1449,6 +1522,184 @@ function relaxVertices(iterations) {
       v.x += (centroid.x - v.x) * relaxationStrength;
       v.y += (centroid.y - v.y) * relaxationStrength;
     });
+
+    refreshAllEdgeMidpoints();
+  }
+}
+
+// Experimental: degree-compensated relaxation. Quads touching low-degree
+// (3-neighbor) vertices feel crowded, while quads with 5- or 6-neighbor
+// corners feel spacious. We bias each quad's target area by the sum of its
+// corner degree deficits (4 - degree), so low-degree-cornered quads settle
+// larger and high-degree-cornered quads settle smaller.
+function relaxVerticesCompensated(iterations) {
+  const COMP_K = 0.18; // per-unit deficit compensation strength
+  const MIN_TARGET = 0.4;
+  for (let it = 0; it < iterations; it++) {
+    // Vertex edge-graph degree from active edges.
+    const degree = new Array(vertices.length).fill(0);
+    for (const e of edges) {
+      if (!e.active) continue;
+      degree[e.a]++;
+      degree[e.b]++;
+    }
+
+    for (const q of quads) {
+      if (!q.active) continue;
+      q.area = calculateQuadArea(q);
+      let deficit = 0;
+      for (const vid of q.verts) deficit += (4 - (degree[vid] || 0));
+      q.targetMultiplier = Math.max(MIN_TARGET, 1 + COMP_K * deficit);
+    }
+
+    const adjFaces = new Map();
+    for (const v of vertices) adjFaces.set(v.id, []);
+    for (const q of quads) {
+      if (!q.active) continue;
+      for (const vid of q.verts) adjFaces.get(vid).push(q);
+    }
+
+    const adjustments = new Map();
+    for (const v of vertices) {
+      if (v.type === 'edge') continue;
+      const faces = adjFaces.get(v.id) || [];
+      if (faces.length === 0) continue;
+
+      let weightedX = 0, weightedY = 0, totalWeight = 0;
+      for (const face of faces) {
+        const centroid = getFaceCentroid(face);
+        const weight = (face.area || 1) / (face.targetMultiplier || 1);
+        weightedX += centroid.x * weight;
+        weightedY += centroid.y * weight;
+        totalWeight += weight;
+      }
+
+      if (totalWeight > 0) {
+        adjustments.set(v.id, {
+          x: weightedX / totalWeight,
+          y: weightedY / totalWeight,
+        });
+      }
+    }
+
+    adjustments.forEach((centroid, vid) => {
+      const v = vertices[vid];
+      v.x += (centroid.x - v.x) * relaxationStrength;
+      v.y += (centroid.y - v.y) * relaxationStrength;
+    });
+
+    refreshAllEdgeMidpoints();
+  }
+}
+
+// Experimental: force-directed relaxation, topology-scoped Coulomb.
+//
+// Repulsion: every pair of vertices that share a face (a quad or a
+// triangle) repel each other with a softened Coulomb 1/r² force. This
+// includes edge-connected neighbors AND the two diagonals of every quad.
+// Non-face-sharing vertices don't interact, so long-range imbalance can't
+// shove the whole mesh outward.
+//
+// Attraction: each active edge is a Hookean spring toward the mean edge
+// length.
+//
+// Update order: Gauss-Seidel — each iteration, vertices are visited in a
+// freshly-shuffled order and the displacement is applied immediately, so
+// later vertices in the sweep already see the updated positions of earlier
+// ones. Shuffling avoids any directional bias from a fixed sweep order.
+function relaxVerticesCoulomb(iterations) {
+  // Mean active-edge length → rest length L.
+  let sumLen = 0, edgeCount = 0;
+  for (const e of edges) {
+    if (!e.active) continue;
+    const a = vertices[e.a], b = vertices[e.b];
+    sumLen += Math.hypot(a.x - b.x, a.y - b.y);
+    edgeCount++;
+  }
+  const L = edgeCount > 0 ? sumLen / edgeCount : (typeof spacing !== 'undefined' ? spacing : 50);
+
+  const Q2 = 0.6 * L * L;
+  const eps2 = (0.5 * L) * (0.5 * L);
+  const kSpring = 0.25;
+  const globalDamping = 0.25;
+  const maxStep = L * 0.02;
+
+  // Build repulsion partners: every pair of vertices that share a quad or
+  // triangle. Edge-connected pairs fall out of this automatically (both
+  // ends are in the same face), and quad diagonals are added on top.
+  const partners = new Array(vertices.length);
+  for (let i = 0; i < vertices.length; i++) partners[i] = new Set();
+  const addFacePartners = (verts) => {
+    for (let i = 0; i < verts.length; i++) {
+      for (let j = i + 1; j < verts.length; j++) {
+        partners[verts[i]].add(verts[j]);
+        partners[verts[j]].add(verts[i]);
+      }
+    }
+  };
+  for (const q of quads)     if (q.active) addFacePartners(q.verts);
+  for (const t of triangles) if (t.active) addFacePartners(t.verts);
+
+  // Spring neighbors: edge-connected only.
+  const edgeNeighbors = new Array(vertices.length);
+  for (let i = 0; i < vertices.length; i++) edgeNeighbors[i] = [];
+  for (const e of edges) {
+    if (!e.active) continue;
+    edgeNeighbors[e.a].push(e.b);
+    edgeNeighbors[e.b].push(e.a);
+  }
+
+  // Movable (non-boundary) vertex ids.
+  const movable = [];
+  for (const v of vertices) if (v.type !== 'edge') movable.push(v.id);
+
+  for (let it = 0; it < iterations; it++) {
+    // Fresh random sweep order each iteration (Fisher-Yates).
+    for (let i = movable.length - 1; i > 0; i--) {
+      const j = (Math.random() * (i + 1)) | 0;
+      const tmp = movable[i]; movable[i] = movable[j]; movable[j] = tmp;
+    }
+
+    // Gauss-Seidel sweep: compute and apply each vertex's displacement
+    // before moving on, so subsequent vertices react to the updated state.
+    for (const vid of movable) {
+      const v = vertices[vid];
+      let fxv = 0, fyv = 0;
+
+      // Softened Coulomb from face-sharing partners.
+      for (const pid of partners[vid]) {
+        const p = vertices[pid];
+        const dx = v.x - p.x;
+        const dy = v.y - p.y;
+        const d2 = dx * dx + dy * dy;
+        const d  = Math.sqrt(d2 + eps2);
+        const f  = Q2 / (d2 + eps2);
+        fxv += f * (dx / d);
+        fyv += f * (dy / d);
+      }
+
+      // Hookean springs along active edges.
+      for (const nid of edgeNeighbors[vid]) {
+        const n = vertices[nid];
+        const dx = n.x - v.x;
+        const dy = n.y - v.y;
+        const d  = Math.hypot(dx, dy) || 1;
+        const f  = kSpring * (d - L);
+        fxv += f * (dx / d);
+        fyv += f * (dy / d);
+      }
+
+      // Damped, capped displacement applied immediately.
+      let sdx = fxv * globalDamping;
+      let sdy = fyv * globalDamping;
+      const mag = Math.hypot(sdx, sdy);
+      if (mag > maxStep) {
+        const s = maxStep / mag;
+        sdx *= s; sdy *= s;
+      }
+      v.x += sdx;
+      v.y += sdy;
+    }
 
     refreshAllEdgeMidpoints();
   }
@@ -1604,6 +1855,8 @@ function initGameHistory() {
   gameUndoIndex = 0;
   updateUndoUI();
   if (window.multiplayerSyncState) window.multiplayerSyncState();
+  // New game — begin a fresh local record (no-op in multiplayer; server owns those).
+  beginLocalRecord();
 }
 
 function drawStones() {
@@ -1844,7 +2097,11 @@ function placeStone(vid, options = {}) {
   // Valid move - capture to game history with correct next-to-move turn
   const moveDesc = moveColor === 'black' ? '⚫' : '⚪';
   captureGameMove(moveDesc);
-  
+
+  if (!options.remote) {
+    appendLocalMove({ type: 'place', vid, color: moveColor });
+  }
+
   updateGameUI();
   if (!options.remote && window.multiplayerSendMove) {
     window.multiplayerSendMove(vid, moveColor);
@@ -1909,7 +2166,7 @@ function updateGameUI() {
   const capWhiteEl = document.getElementById('capWhite');
   const gameInfoEl = document.getElementById('gameInfo');
 
-  if (turnEl) turnEl.textContent = currentPlayer === 'black' ? 'Black' : 'White';
+  if (turnEl) turnEl.textContent = window.t ? t(currentPlayer === 'black' ? 'room.black' : 'room.white') : (currentPlayer === 'black' ? 'Black' : 'White');
   if (capBlackEl) capBlackEl.textContent = capturedBlack;
   if (capWhiteEl) capWhiteEl.textContent = capturedWhite;
   if (gameInfoEl) {
@@ -1926,7 +2183,7 @@ function updateGameUI() {
 function startAutoRemoveEdges() {
   const triCount = triangles.filter((t) => t.active).length;
   if (triCount === 0) {
-    alert('No triangles to remove.');
+    alert(window.t ? t('alert.noTriangles') : 'No triangles to remove.');
     return;
   }
   
@@ -2061,9 +2318,9 @@ function markVisibleVertices() {
   });
 }
 
-// ---- Save/Load Goban ----
-function saveGoban() {
-  const data = {
+// ---- Save/Load Goban (server-backed) ----
+function buildCurrentGobanData() {
+  return {
     version: 1,
     hexRadius,
     spacing,
@@ -2078,116 +2335,177 @@ function saveGoban() {
     })),
     quads: quads.filter((q) => q.active).map((q) => ({ verts: [...q.verts] })),
   };
+}
 
-  const fname = `goban_${Date.now()}.json`;
-  saveJSON(data, fname);
-  if (saveLoadStatusEl) saveLoadStatusEl.textContent = `Saved ${fname}`;
+function saveGoban() {
+  openGobanModal('save');
 }
 
 function startLoadGoban() {
-  // Set up editor environment first
   document.getElementById('app').style.display = 'block';
   document.getElementById('presetMenu').style.display = 'none';
   const placeholder = document.getElementById('roomPlaceholder');
   if (placeholder) placeholder.style.display = 'none';
   showPanelSection('edit');
   currentScreen = 'editor';
-  
-  if (!canvasCreated) {
-    ensureCanvas();
-  }
-  
-  // Now open file picker
-  const picker = createFileInput(handleFile, false);
-  picker.elt.accept = 'application/json';
-  picker.elt.click();
-
-  function handleFile(file) {
-    if (file?.type === 'application' && file.subtype === 'json') {
-      const data = file.data || file.string;
-      try {
-        const json = typeof data === 'string' ? JSON.parse(data) : data;
-        
-        // Check if it's a game save or just a goban save
-        if (json.type === 'game') {
-          // Load as game
-          restoreGoban(json);
-          centerAndFitGoban();
-          restoreGameFromData(json);
-          mode = 'play';
-          currentScreen = 'play';
-          showPanelSection('play');
-          setupPlayButtons();
-          updateGameUI();
-          if (window.multiplayerSyncState) window.multiplayerSyncState();
-          if (saveLoadStatusEl) saveLoadStatusEl.textContent = 'Game loaded';
-        } else {
-          // Load as goban only
-          restoreGoban(json);
-          centerAndFitGoban();
-          if (saveLoadStatusEl) saveLoadStatusEl.textContent = 'Goban loaded';
-          
-          // Initialize editor UI after loading
-          mode = 'move-vertex';
-          captureState('initial');
-          updateUiCounts();
-          setupEditorButtons();
-        }
-        redraw();
-      } catch (e) {
-        console.error('Failed to load file', e);
-        if (saveLoadStatusEl) saveLoadStatusEl.textContent = 'Load failed';
-      }
-    }
-    picker.remove();
-  }
+  if (!canvasCreated) ensureCanvas();
+  openGobanModal('load');
 }
 
 function loadGoban() {
-  const picker = createFileInput(handleFile, false);
-  picker.elt.accept = 'application/json';
-  picker.elt.click();
-
-  function handleFile(file) {
-    if (file?.type === 'application' && file.subtype === 'json') {
-      const data = file.data || file.string;
-      try {
-        const json = typeof data === 'string' ? JSON.parse(data) : data;
-        
-        // Check if it's a game save or just a goban save
-        if (json.type === 'game') {
-          // Load as game
-          restoreGoban(json);
-          centerAndFitGoban();
-          restoreGameFromData(json);
-          mode = 'play';
-          currentScreen = 'play';
-          showPanelSection('play');
-          setupPlayButtons();
-          updateGameUI();
-          if (window.multiplayerSyncState) window.multiplayerSyncState();
-          if (saveLoadStatusEl) saveLoadStatusEl.textContent = 'Game loaded';
-        } else {
-          // Load as goban only
-          restoreGoban(json);
-          centerAndFitGoban();
-          if (saveLoadStatusEl) saveLoadStatusEl.textContent = 'Loaded goban';
-          
-          // Initialize editor UI after loading
-          mode = 'move-vertex';
-          captureState('initial');
-          updateUiCounts();
-          setupEditorButtons();
-        }
-        redraw();
-      } catch (e) {
-        console.error('Failed to load goban', e);
-        if (saveLoadStatusEl) saveLoadStatusEl.textContent = 'Load failed';
-      }
-    }
-    picker.remove();
-  }
+  openGobanModal('load');
 }
+
+function applyLoadedGoban(json) {
+  restoreGoban(json);
+  centerAndFitGoban();
+  if (saveLoadStatusEl) saveLoadStatusEl.textContent = window.t ? t('play.gobanLoaded') : 'Goban loaded';
+  mode = 'move-vertex';
+  captureState('initial');
+  updateUiCounts();
+  setupEditorButtons();
+  redraw();
+}
+
+let _gobanFilter = 'official';
+let _gobanSearch = '';
+
+function openGobanModal(mode) {
+  const modal = document.getElementById('gobanModal');
+  const title = document.getElementById('gobanModalTitle');
+  const saveRow = document.getElementById('gobanSaveRow');
+  const filterRow = document.getElementById('gobanFilterRow');
+  const list = document.getElementById('gobanList');
+  const search = document.getElementById('gobanSearchInput');
+  const nameInput = document.getElementById('gobanSaveName');
+  const t = window.t || ((k) => k);
+  if (mode === 'save') {
+    title.textContent = t('goban.modal.saveTitle');
+    saveRow.style.display = 'block';
+    filterRow.style.display = 'flex';
+    nameInput.value = '';
+    setTimeout(() => nameInput.focus(), 50);
+  } else {
+    title.textContent = t('goban.modal.loadTitle');
+    saveRow.style.display = 'none';
+    filterRow.style.display = 'flex';
+  }
+  list.innerHTML = '';
+  search.value = _gobanSearch;
+  modal.style.display = 'flex';
+  refreshGobanList();
+  refreshGobanFilterButtons();
+}
+
+function refreshGobanFilterButtons() {
+  document.querySelectorAll('.goban-filter-btn').forEach((btn) => {
+    if (btn.dataset.filter === _gobanFilter) btn.classList.add('active');
+    else btn.classList.remove('active');
+  });
+}
+
+async function refreshGobanList() {
+  const list = document.getElementById('gobanList');
+  const t = window.t || ((k) => k);
+  list.textContent = t('records.loading');
+  const params = new URLSearchParams({ filter: _gobanFilter });
+  if (_gobanSearch) params.set('q', _gobanSearch);
+  let data;
+  try {
+    const res = await fetch('/api/gobans?' + params.toString());
+    if (!res.ok) throw new Error('failed');
+    data = await res.json();
+  } catch (e) {
+    list.textContent = t('records.failed');
+    return;
+  }
+  list.innerHTML = '';
+  if (!data.gobans.length) {
+    const empty = document.createElement('div');
+    empty.style.opacity = '0.6';
+    empty.textContent = t('goban.modal.empty');
+    list.appendChild(empty);
+    return;
+  }
+  data.gobans.forEach((g) => {
+    const item = document.createElement('div');
+    item.className = 'record-item';
+    const info = document.createElement('div');
+    const title = document.createElement('strong');
+    title.textContent = g.name + (g.official ? ' ★' : '');
+    const sub = document.createElement('span');
+    sub.style.opacity = '0.7';
+    sub.style.fontSize = '12px';
+    sub.textContent = ` — ${g.creator}`;
+    info.appendChild(title);
+    info.appendChild(sub);
+    item.appendChild(info);
+    const loadBtn = document.createElement('button');
+    loadBtn.className = 'ghost-btn';
+    loadBtn.textContent = (window.t || ((k) => k))('records.load');
+    loadBtn.onclick = async () => {
+      const r = await fetch('/api/gobans/' + g.id);
+      if (!r.ok) return;
+      const full = await r.json();
+      applyLoadedGoban(full.data);
+      document.getElementById('gobanModal').style.display = 'none';
+    };
+    item.appendChild(loadBtn);
+    list.appendChild(item);
+  });
+}
+
+async function submitGobanSave() {
+  const nameInput = document.getElementById('gobanSaveName');
+  const name = (nameInput.value || '').trim();
+  const t = window.t || ((k) => k);
+  if (!name) {
+    nameInput.focus();
+    return;
+  }
+  const res = await fetch('/api/gobans', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ name, data: buildCurrentGobanData() }),
+  });
+  if (res.status === 401) {
+    alert(t('records.loginRequiredLoad'));
+    return;
+  }
+  if (!res.ok) {
+    alert(t('records.saveFailed') || 'Save failed');
+    return;
+  }
+  if (saveLoadStatusEl) saveLoadStatusEl.textContent = t('goban.modal.saved');
+  refreshGobanList();
+  nameInput.value = '';
+}
+
+function wireGobanModal() {
+  const modal = document.getElementById('gobanModal');
+  if (!modal || modal.dataset.wired) return;
+  modal.dataset.wired = '1';
+  document.getElementById('gobanModalClose').onclick = () => (modal.style.display = 'none');
+  document.getElementById('gobanSaveBtn').onclick = submitGobanSave;
+  document.getElementById('gobanSaveName').addEventListener('keypress', (e) => {
+    if (e.key === 'Enter') submitGobanSave();
+  });
+  document.querySelectorAll('.goban-filter-btn').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      _gobanFilter = btn.dataset.filter;
+      refreshGobanFilterButtons();
+      refreshGobanList();
+    });
+  });
+  const search = document.getElementById('gobanSearchInput');
+  let searchTimer = null;
+  search.addEventListener('input', () => {
+    _gobanSearch = search.value;
+    clearTimeout(searchTimer);
+    searchTimer = setTimeout(refreshGobanList, 200);
+  });
+}
+document.addEventListener('DOMContentLoaded', wireGobanModal);
 
 function restoreGoban(data) {
   // Reset structures
@@ -2625,10 +2943,10 @@ function captureGobanEdit(actionLabel) {
 function captureGameMove(moveDesc) {
   const stack = gameUndoStack;
   const idx = gameUndoIndex;
-  
+
   // Truncate redo stack
   stack.splice(idx + 1);
-  
+
   // Capture game state
   const snapshot = captureGameState(moveDesc);
   stack.push(snapshot);
@@ -2728,7 +3046,7 @@ function updateUndoUI() {
 
   if (undoBtn) undoBtn.disabled = idx <= 0;
   if (redoBtn) redoBtn.disabled = idx >= stack.length - 1;
-  if (undoStatus) undoStatus.textContent = `Undo: ${idx}/${stack.length - 1}`;
+  if (undoStatus) undoStatus.textContent = window.t ? t('play.undoStatus', { idx, total: stack.length - 1 }) : `Undo: ${idx}/${stack.length - 1}`;
 }
 
 function subdivideMesh() {
@@ -2880,15 +3198,15 @@ function renderScore(score) {
   if (resultEl && resultRow) {
     const diff = Math.abs(score.blackTotal - score.whiteTotal);
     if (score.blackTotal > score.whiteTotal) {
-      resultEl.textContent = `🏆 BLACK WINS by ${diff.toFixed(1)} points!`;
+      resultEl.textContent = window.t ? t('play.blackWins', { diff: diff.toFixed(1) }) : `🏆 BLACK WINS by ${diff.toFixed(1)} points!`;
       resultEl.style.color = '#ffffff';
       resultEl.style.textShadow = '2px 2px 4px rgba(0,0,0,0.8)';
     } else if (score.whiteTotal > score.blackTotal) {
-      resultEl.textContent = `🏆 WHITE WINS by ${diff.toFixed(1)} points!`;
+      resultEl.textContent = window.t ? t('play.whiteWins', { diff: diff.toFixed(1) }) : `🏆 WHITE WINS by ${diff.toFixed(1)} points!`;
       resultEl.style.color = '#ffffff';
       resultEl.style.textShadow = '2px 2px 4px rgba(0,0,0,0.8)';
     } else {
-      resultEl.textContent = `TIE GAME!`;
+      resultEl.textContent = window.t ? t('play.tie') : `TIE GAME!`;
       resultEl.style.color = '#ffdd00';
     }
     resultRow.style.display = 'block';
@@ -2919,6 +3237,91 @@ window.resetToRoomMenu = () => {
   if (resultRow)     resultRow.style.display      = 'none';
   noLoop();
 };
+
+// ---- Local game record (solo play only) ----
+// Multiplayer records are built server-side from socket events.
+// For solo play we build a record in-memory and POST it at game end.
+let localRecord = null;
+let localRecordUsedAI = false;
+
+function beginLocalRecord() {
+  // Only track solo games here — multiplayer records are authoritative on the server.
+  if (window.multiplayerState?.active) {
+    localRecord = null;
+    console.log('[record] solo local record NOT started (multiplayer room active — server owns record)');
+    return;
+  }
+  localRecordUsedAI = false;
+  localRecord = {
+    startedAt: new Date().toISOString(),
+    initialGoban: window.getGameSnapshot ? window.getGameSnapshot() : null,
+    moves: [],
+  };
+  console.log('[record] START  (solo)');
+}
+
+function appendLocalMove(move) {
+  if (!localRecord) return;
+  localRecord.moves.push({ ...move, ts: Date.now() });
+  console.log(`[record] move  (solo) #${localRecord.moves.length} ${move.type}${move.vid != null ? ' vid=' + move.vid : ''}${move.color ? ' ' + move.color : ''}`);
+}
+
+function markLocalRecordUsedAI() {
+  localRecordUsedAI = true;
+}
+
+async function saveLocalRecord(result) {
+  if (!localRecord) {
+    console.log('[record] END (solo) — no active local record to save');
+    return;
+  }
+  try {
+    const me = await fetch('/api/auth/me').then(r => r.json()).catch(() => ({}));
+    const user = me?.user;
+    if (!user) {
+      console.log('[record] END (solo) — not logged in, record discarded');
+      localRecord = null;
+      return;
+    }
+
+    const endedAt = new Date();
+    const dateStr = endedAt.toISOString().slice(0, 10);
+    const timeStr = endedAt.toTimeString().slice(0, 5).replace(':', '-');
+    const p1 = user.username;
+    const p2 = localRecordUsedAI ? 'AI' : 'local';
+    const name = `${p1}_${p2}_${dateStr}_${timeStr}`;
+
+    const body = {
+      name,
+      data: {
+        version: 1,
+        type: 'game-record',
+        startedAt: localRecord.startedAt,
+        endedAt: endedAt.toISOString(),
+        endReason: 'consent',
+        result: result || null,
+        players: { black: { username: p1 }, white: { username: p2 } },
+        initialGoban: localRecord.initialGoban,
+        moves: localRecord.moves,
+      },
+    };
+    const res = await fetch('/api/games', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    });
+    console.log(`[record] END (solo) saved="${name}" moves=${localRecord.moves.length} status=${res.status}`);
+  } catch (e) {
+    console.warn('[record] solo save failed:', e);
+  } finally {
+    localRecord = null;
+  }
+}
+
+window.beginLocalRecord = beginLocalRecord;
+window.appendLocalMove = appendLocalMove;
+window.markLocalRecordUsedAI = markLocalRecordUsedAI;
+window.saveLocalRecord = saveLocalRecord;
 
 window.getGameSnapshot = () => ({
   version: 1,
@@ -2959,6 +3362,39 @@ window.applyGameSnapshot = (data) => {
   document.getElementById('app').style.display = 'block';
   const placeholder = document.getElementById('roomPlaceholder');
   if (placeholder) placeholder.style.display = 'none';
+
+  // New record format: {type:'game-record', initialGoban, moves, ...}
+  // Replay from the initial goban so the board state reflects every move.
+  if (data && data.type === 'game-record' && data.initialGoban) {
+    const base = data.initialGoban;
+    restoreGoban(base);
+    centerAndFitGoban();
+    restoreGameFromData(base);
+    mode = 'play';
+    currentScreen = 'play';
+    showPanelSection('play');
+    setupPlayButtons();
+
+    // Replay each recorded move through the normal game path. `remote:true`
+    // prevents echoing moves back to the multiplayer socket.
+    if (Array.isArray(data.moves)) {
+      for (const mv of data.moves) {
+        if (mv.type === 'place' && mv.vid != null) {
+          const prev = currentPlayer;
+          if (mv.color) currentPlayer = mv.color;
+          placeStone(mv.vid, { remote: true });
+          if (!mv.color) currentPlayer = prev;
+        } else if (mv.type === 'pass') {
+          handlePass(true);
+        }
+      }
+    }
+    updateGameUI();
+    redraw();
+    return;
+  }
+
+  // Legacy snapshot format — full board state in one blob.
   restoreGoban(data);
   centerAndFitGoban();
   restoreGameFromData(data);
@@ -2990,3 +3426,14 @@ window.updateGameUIRemote = () => {
   updateGameUI();
   redraw();
 };
+
+// Refresh dynamic strings (turn indicator, undo status, results) when language changes.
+window.addEventListener('languagechange', () => {
+  if (typeof updateGameUI === 'function') updateGameUI();
+  if (typeof updateUndoUI === 'function') updateUndoUI();
+  // Re-render winner banner if it's currently visible.
+  const resultRow = document.getElementById('resultRow');
+  if (resultRow && resultRow.style.display !== 'none' && typeof computeTrompTaylorScore === 'function') {
+    try { renderScore(computeTrompTaylorScore()); } catch (e) { /* scoring may not be ready */ }
+  }
+});
