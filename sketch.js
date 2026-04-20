@@ -147,8 +147,6 @@ function setupMenuListeners() {
   // label toggles) still happens in setupPlayButtons().
   document.getElementById('gameUndoBtn')?.addEventListener('click', undoStep);
   document.getElementById('gameRedoBtn')?.addEventListener('click', redoStep);
-  document.getElementById('saveGameBtn')?.addEventListener('click', saveGame);
-  document.getElementById('loadGameBtn')?.addEventListener('click', loadGame);
   document.getElementById('passBtn')?.addEventListener('click', () => handlePass(false));
   document.getElementById('finishMarkingBtn')?.addEventListener('click', finishMarkingDeadStones);
   document.getElementById('scoreBtn')?.addEventListener('click', () => {
@@ -186,35 +184,89 @@ function showPanelSection(section) {
 }
 
 // Show the game rules dialog before starting a multiplayer game.
-// If not in a room or not the owner, calls startFn immediately with current defaults.
+// Solo / non-owner: skip the dialog and call startFn with defaults.
+// Multiplayer host: pick komi/color rule and an opponent to invite. The
+// startFn is deferred and only runs after the invitee accepts (server emits
+// room:rules, which multiplayer.js routes back to the deferred startFn).
 function showRulesDialog(startFn) {
-  if (!window.multiplayerState?.active || !window.multiplayerState?.isOwner) {
+  const ms = window.multiplayerState;
+  if (!ms?.active || !ms?.isOwner) {
     startFn({ komi, colorMode: 'owner-black' });
     return;
   }
   const modal = document.getElementById('gameRulesModal');
   if (!modal) { startFn({ komi, colorMode: 'owner-black' }); return; }
 
-  // Pre-fill with current komi
   const komiInput = document.getElementById('komiInput');
   if (komiInput) komiInput.value = komi;
+
+  const colorModeSelect = document.getElementById('colorModeSelect');
+  const opponentRow = document.getElementById('rulesOpponentRow');
+  const opponentSelect = document.getElementById('rulesOpponentSelect');
+  const opponentHint = document.getElementById('rulesOpponentHint');
+  const confirmBtn = document.getElementById('gameRulesConfirm');
+
+  // Populate the opponent dropdown with everyone in the room except self.
+  const others = (window.multiplayerOtherMembers && window.multiplayerOtherMembers()) || [];
+  if (opponentSelect) {
+    opponentSelect.innerHTML = '';
+    others.forEach((m) => {
+      const opt = document.createElement('option');
+      opt.value = m.clientId;
+      opt.textContent = m.name || m.clientId;
+      opponentSelect.appendChild(opt);
+    });
+  }
+
+  // In study mode there's no opponent to invite — game runs locally for both.
+  // With no other members, fall back to study (host can play alone).
+  const refreshOpponentRow = () => {
+    const isStudy = colorModeSelect?.value === 'study';
+    const hasOthers = others.length > 0;
+    if (opponentRow) opponentRow.style.display = (isStudy || !hasOthers) ? 'none' : 'block';
+    if (opponentHint && !hasOthers) opponentHint.textContent = (window.t ? t('rules.noOtherPlayers') : 'No other players in this room yet.');
+    if (confirmBtn) {
+      confirmBtn.textContent = (window.t ? t(isStudy || !hasOthers ? 'rules.start' : 'rules.sendInvite')
+                                          : (isStudy || !hasOthers ? 'Start Game' : 'Send Invitation'));
+    }
+  };
+  if (colorModeSelect) colorModeSelect.onchange = refreshOpponentRow;
+  refreshOpponentRow();
 
   modal.style.display = 'flex';
 
   const close = () => { modal.style.display = 'none'; };
   document.getElementById('gameRulesClose').onclick = close;
 
-  document.getElementById('gameRulesConfirm').onclick = () => {
+  confirmBtn.onclick = () => {
     const k = parseFloat(komiInput ? komiInput.value : 7.5);
-    const colorMode = document.getElementById('colorModeSelect').value;
-    komi = isNaN(k) ? 7.5 : Math.round(k * 2) / 2; // snap to 0.5
-    close();
-    // Update komi label
+    const colorMode = colorModeSelect ? colorModeSelect.value : 'owner-black';
+    komi = isNaN(k) ? 7.5 : Math.round(k * 2) / 2;
     const komiDisplay = document.getElementById('komiDisplay');
     if (komiDisplay) komiDisplay.textContent = komi;
-    // Send rules to room
-    if (window.multiplayerSendRules) window.multiplayerSendRules({ komi, colorMode });
-    startFn({ komi, colorMode });
+
+    const isStudy = colorMode === 'study';
+    const hasOthers = others.length > 0;
+
+    if (isStudy || !hasOthers) {
+      // No invitation flow — start immediately and tell the room directly.
+      close();
+      if (window.multiplayerSendChallenge) {
+        window.multiplayerSendChallenge({ komi, colorMode: isStudy ? 'study' : colorMode }, null, startFn);
+      } else {
+        startFn({ komi, colorMode });
+      }
+      return;
+    }
+
+    const opponentClientId = opponentSelect ? opponentSelect.value : null;
+    if (!opponentClientId) return; // no opponent picked
+    close();
+    if (window.multiplayerSendChallenge) {
+      window.multiplayerSendChallenge({ komi, colorMode }, opponentClientId, startFn);
+    } else {
+      startFn({ komi, colorMode });
+    }
   };
 }
 
@@ -485,6 +537,17 @@ function setupPlayButtons() {
     } else {
       aiMoveBtn.disabled = false;
     }
+  }
+  // Per-player clocks are only shown for competitive multiplayer games where
+  // both seats are filled. Solo / study / spectator views hide them.
+  const clockBox = document.getElementById('clockBox');
+  if (clockBox) {
+    const ms = window.multiplayerState;
+    const competitive = ms?.active
+      && (ms.color === 'black' || ms.color === 'white')
+      && (ms.memberCount || 0) >= 2
+      && ms.colorMode !== 'study';
+    clockBox.style.display = competitive ? 'flex' : 'none';
   }
   updateUndoUI();
 }
@@ -968,6 +1031,12 @@ function handlePass(isRemote = false) {
     document.getElementById('gameStatusRow').style.display = 'block';
     document.getElementById('gameStatus').textContent = window.t ? t('play.gameEnded') : 'Game ended. Mark dead stones.';
     document.getElementById('deadStoneRow').style.display = 'block';
+    // Reset finish-marking confirmation state for the new round.
+    const finishBtn = document.getElementById('finishMarkingBtn');
+    if (finishBtn) finishBtn.disabled = false;
+    const progEl = document.getElementById('markingProgress');
+    if (progEl) progEl.textContent = '';
+    refreshTurnBanner();
     console.log('Game ended - both players passed. Mark dead stones.');
   } else {
     lastMoveWasPass = true;
@@ -981,39 +1050,100 @@ function handlePass(isRemote = false) {
   if (!isRemote) appendLocalMove({ type: 'pass' });
 }
 
-function toggleDeadStone(vid) {
+function toggleDeadStone(vid, fromRemote) {
   if (!gameStones.has(vid)) return;
-  
+
+  // Spectators don't get to mark; only the seated players do.
+  if (!fromRemote && window.multiplayerState?.active) {
+    const c = window.multiplayerState.color;
+    if (c !== 'black' && c !== 'white' && c !== 'study') return;
+  }
+
   const group = getGroup(vid);
   const allDead = Array.from(group).every(v => deadStones.has(v));
-  
+  const nowDead = !allDead;
+
   if (allDead) {
-    // Unmark as dead
-    for (const v of group) {
-      deadStones.delete(v);
-    }
+    for (const v of group) deadStones.delete(v);
   } else {
-    // Mark as dead
-    for (const v of group) {
-      deadStones.add(v);
-    }
+    for (const v of group) deadStones.add(v);
   }
-  
+
+  // Mirror the toggle to the other player. Send a single representative vid
+  // — the receiver will resolve the same group via getGroup(vid).
+  if (!fromRemote && window.multiplayerSendDeadMark) {
+    window.multiplayerSendDeadMark(vid, nowDead);
+  }
+
   redraw();
 }
 
-function finishMarkingDeadStones() {
-  markingDeadStones = false;
-  document.getElementById('deadStoneRow').style.display = 'none';
-  document.getElementById('gameStatusRow').style.display = 'none';
-
-  // Automatically compute and display final score
-  const score = computeTrompTaylorScore();
-  renderScore(score);
+// Called by multiplayer.js when the opposing player toggles a dead-stone group.
+window.applyRemoteDeadMark = (vid, dead) => {
+  if (!markingDeadStones || !gameStones.has(vid)) return;
+  const group = getGroup(vid);
+  if (dead) {
+    for (const v of group) deadStones.add(v);
+  } else {
+    for (const v of group) deadStones.delete(v);
+  }
   redraw();
+};
 
-  // Persist the finished record. Multiplayer games are saved by the server;
-  // solo games POST directly via saveLocalRecord.
+// Called by multiplayer.js when the server confirms one or both finishMarking
+// confirmations. Used to update the "waiting for opponent" status text.
+window.applyMarkingProgress = (finishedColors) => {
+  const el = document.getElementById('markingProgress');
+  if (!el) return;
+  if (!Array.isArray(finishedColors) || finishedColors.length === 0) {
+    el.textContent = '';
+    return;
+  }
+  if (finishedColors.length >= 2) {
+    el.textContent = window.t ? t('gameEnd.markingDone') : 'Both players ready.';
+  } else {
+    el.textContent = window.t ? t('gameEnd.markingWaiting') : 'Waiting for opponent to confirm…';
+  }
+};
+
+// Called by multiplayer.js when the server emits game:end. Cleans up the
+// marking UI; the modal is rendered by multiplayer.js itself.
+window.applyGameEnded = (payload) => {
+  markingDeadStones = false;
+  gameEnded = true;
+  const deadStoneRow = document.getElementById('deadStoneRow');
+  const gameStatusRow = document.getElementById('gameStatusRow');
+  const markingProg = document.getElementById('markingProgress');
+  const clockBox = document.getElementById('clockBox');
+  if (deadStoneRow) deadStoneRow.style.display = 'none';
+  if (gameStatusRow) gameStatusRow.style.display = 'none';
+  if (markingProg) markingProg.textContent = '';
+  if (clockBox) clockBox.style.display = 'none';
+  // Score row stays so players can see the final tally if it was a points win.
+  if (payload && (payload.blackTotal != null || payload.whiteTotal != null)) {
+    try {
+      renderScore({
+        blackTotal: payload.blackTotal,
+        whiteTotal: payload.whiteTotal,
+        komi: payload.komi,
+        // best-effort: we don't have the territory breakdown from the server
+        blackTerritory: 0, whiteTerritory: 0, neutral: 0,
+        blackStones: 0, whiteStones: 0,
+      });
+    } catch {}
+  }
+  refreshTurnBanner();
+  redraw();
+};
+
+function finishMarkingDeadStones() {
+  // In multiplayer competitive games, both players must confirm. Don't tear
+  // down the marking UI yet — wait for the server's game:end event.
+  const ms = window.multiplayerState;
+  const competitive = ms?.active && (ms.color === 'black' || ms.color === 'white') && (ms.memberCount || 0) >= 2;
+
+  // Compute current proposed score using local dead-stone marks.
+  const score = computeTrompTaylorScore();
   const result = {
     blackTotal: score.blackTotal,
     whiteTotal: score.whiteTotal,
@@ -1022,7 +1152,29 @@ function finishMarkingDeadStones() {
           : score.blackTotal > score.whiteTotal ? 'black' : 'white',
     komi: score.komi,
   };
-  if (window.multiplayerState?.active) {
+
+  if (competitive) {
+    // Notify server. UI stays in marking mode until both confirmations arrive
+    // and the server emits game:end (which calls applyGameEnded).
+    if (window.multiplayerSendFinishMarking) window.multiplayerSendFinishMarking(result);
+    const finishBtn = document.getElementById('finishMarkingBtn');
+    if (finishBtn) finishBtn.disabled = true;
+    const progEl = document.getElementById('markingProgress');
+    if (progEl) progEl.textContent = window.t ? t('gameEnd.markingWaiting') : 'Waiting for opponent to confirm…';
+    renderScore(score); // show local proposed score for feedback
+    redraw();
+    return;
+  }
+
+  // Solo / study path: end the game locally.
+  markingDeadStones = false;
+  document.getElementById('deadStoneRow').style.display = 'none';
+  document.getElementById('gameStatusRow').style.display = 'none';
+  renderScore(score);
+  redraw();
+
+  if (ms?.active) {
+    // Study mode in a room — still let the server know via legacy game:end.
     if (window.multiplayerSendGameEnd) window.multiplayerSendGameEnd(result);
   } else {
     saveLocalRecord(result);
@@ -1849,6 +2001,10 @@ function initGameHistory() {
   if (gameStatusRow) gameStatusRow.style.display = 'none';
   if (deadStoneRow) deadStoneRow.style.display = 'none';
   if (resultRow) resultRow.style.display = 'none';
+  const finishBtn = document.getElementById('finishMarkingBtn');
+  if (finishBtn) finishBtn.disabled = false;
+  const markingProg = document.getElementById('markingProgress');
+  if (markingProg) markingProg.textContent = '';
   
   const snapshot = captureGameState('start');
   gameUndoStack = [snapshot];
@@ -2177,7 +2333,72 @@ function updateGameUI() {
     }
   }
   if (window.multiplayerUpdateTurn) window.multiplayerUpdateTurn();
+  refreshTurnBanner();
 }
+
+// Visual cue for whose turn it is. Banner is only shown in multiplayer
+// competitive games (i.e. local player has a black/white color and an
+// opponent is present); hidden for solo / study / spectator / pre-game.
+function refreshTurnBanner() {
+  const banner = document.getElementById('turnBanner');
+  const text = document.getElementById('turnBannerText');
+  if (!banner || !text) return;
+  const ms = window.multiplayerState;
+  const inGame = mode === 'play' && currentScreen === 'play';
+  const competitive = ms && ms.active && (ms.color === 'black' || ms.color === 'white') && (ms.memberCount || 0) >= 2 && ms.colorMode !== 'study';
+  // Sync the clockBox visibility with the same predicate — clocks only run
+  // for competitive multiplayer games.
+  const clockBox = document.getElementById('clockBox');
+  if (clockBox) {
+    clockBox.style.display = (inGame && competitive && !gameEnded) ? 'flex' : 'none';
+  }
+  if (!inGame || !competitive || gameEnded || markingDeadStones) {
+    banner.classList.remove('visible', 'turn-yours', 'turn-opponent');
+    return;
+  }
+  const yours = ms.color === currentPlayer;
+  banner.classList.add('visible');
+  if (yours) {
+    banner.classList.add('turn-yours');
+    banner.classList.remove('turn-opponent');
+    const colorWord = (window.t ? t(ms.color === 'black' ? 'room.black' : 'room.white')
+                                 : (ms.color === 'black' ? 'Black' : 'White'));
+    text.textContent = window.t ? t('play.yourTurn', { color: colorWord })
+                                 : `Your turn (${colorWord})`;
+    // Subtle audio cue when the turn flips to local player.
+    if (banner.dataset.lastYours !== '1') {
+      try { playTurnChime(); } catch {}
+    }
+    banner.dataset.lastYours = '1';
+  } else {
+    banner.classList.add('turn-opponent');
+    banner.classList.remove('turn-yours');
+    text.textContent = window.t ? t('play.opponentTurn') : 'Waiting for opponent…';
+    banner.dataset.lastYours = '0';
+  }
+}
+
+let _turnAudioCtx = null;
+function playTurnChime() {
+  if (!('AudioContext' in window || 'webkitAudioContext' in window)) return;
+  const Ctx = window.AudioContext || window.webkitAudioContext;
+  if (!_turnAudioCtx) _turnAudioCtx = new Ctx();
+  const ctx = _turnAudioCtx;
+  if (ctx.state === 'suspended') ctx.resume?.();
+  const o = ctx.createOscillator();
+  const g = ctx.createGain();
+  o.type = 'sine';
+  o.frequency.setValueAtTime(660, ctx.currentTime);
+  o.frequency.exponentialRampToValueAtTime(880, ctx.currentTime + 0.08);
+  g.gain.setValueAtTime(0.0001, ctx.currentTime);
+  g.gain.exponentialRampToValueAtTime(0.08, ctx.currentTime + 0.02);
+  g.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime + 0.18);
+  o.connect(g).connect(ctx.destination);
+  o.start();
+  o.stop(ctx.currentTime + 0.2);
+}
+
+window.refreshTurnBanner = refreshTurnBanner;
 
 // ---- Auto edge removal ----
 function startAutoRemoveEdges() {
@@ -2224,10 +2445,10 @@ function applyGuaranteedQuadrangulation() {
   redraw();
 }
 
-function scaleGridByFactor(factor) {
-  const centerX = width / 2;
-  const centerY = height / 2;
-  
+function scaleGridByFactor(factor, cx, cy) {
+  const centerX = (typeof cx === 'number') ? cx : width / 2;
+  const centerY = (typeof cy === 'number') ? cy : height / 2;
+
   // Scale all vertex positions from center
   for (const v of vertices) {
     const dx = v.x - centerX;
@@ -2245,50 +2466,78 @@ function scaleGridByFactor(factor) {
   }
 }
 
+// Compute layout-aware target center and a canvas margin proportional to the
+// smaller canvas dimension. On iPad-class widths (room panel visible but not
+// collapsed to bottom-sheet), shift the target center to the right by
+// menu_width/2 so the goban is centered in the area to the right of the menu.
+function computeBoardLayout() {
+  // Margin = small percentage of min(width, height). On a tall narrow phone
+  // this prevents huge top/bottom empty space; on a wide canvas it prevents
+  // ribbons of side margin.
+  const minDim = Math.min(width, height);
+  const margin = Math.max(8, minDim * 0.025); // 2.5%, never less than 8px
+  let centerX = width / 2;
+  const centerY = height / 2;
+  let availableWidth = width - 2 * margin;
+  const availableHeight = height - 2 * margin;
+  // iPad-class: room panel (.room-panel) is visible at left and is NOT a
+  // bottom-sheet. Bottom-sheet kicks in at ≤600px (CSS breakpoint).
+  const panelEl = document.getElementById('roomPanel');
+  if (panelEl && currentScreen === 'play' && windowWidth > 600) {
+    const rect = panelEl.getBoundingClientRect();
+    if (rect && rect.width > 0 && rect.right > 0 && rect.left < width) {
+      // Total horizontal footprint of the panel from the left edge of viewport
+      const panelFootprint = Math.min(width, rect.right);
+      // Center the goban in the area to the right of the panel.
+      centerX = panelFootprint + (width - panelFootprint) / 2;
+      availableWidth = Math.max(100, width - panelFootprint - margin);
+    }
+  }
+  return { centerX, centerY, availableWidth, availableHeight };
+}
+
 function centerAndFitGoban() {
   // Find bounding box of all visible vertices
   const visibleVerts = vertices.filter(v => v.visible !== false);
   if (visibleVerts.length === 0) return;
-  
+
   let minX = Infinity, maxX = -Infinity;
   let minY = Infinity, maxY = -Infinity;
-  
+
   for (const v of visibleVerts) {
     minX = Math.min(minX, v.x);
     maxX = Math.max(maxX, v.x);
     minY = Math.min(minY, v.y);
     maxY = Math.max(maxY, v.y);
   }
-  
+
   const currentCenterX = (minX + maxX) / 2;
   const currentCenterY = (minY + maxY) / 2;
   const currentWidth = maxX - minX;
   const currentHeight = maxY - minY;
-  
-  const targetCenterX = width / 2;
-  const targetCenterY = height / 2;
-  
-  const offsetX = targetCenterX - currentCenterX;
-  const offsetY = targetCenterY - currentCenterY;
-  
+
+  const layout = computeBoardLayout();
+
+  const offsetX = layout.centerX - currentCenterX;
+  const offsetY = layout.centerY - currentCenterY;
+
   // Apply translation
   for (const v of vertices) {
     v.x += offsetX;
     v.y += offsetY;
   }
-  
-  // Calculate scale to fit with some margin (90% of canvas), both up and down
-  const availableWidth = width * 0.9;
-  const availableHeight = height * 0.9;
-  const scaleX = availableWidth / currentWidth;
-  const scaleY = availableHeight / currentHeight;
+
+  // Scale to fit available area (margin proportional to canvas size).
+  const scaleX = layout.availableWidth / currentWidth;
+  const scaleY = layout.availableHeight / currentHeight;
   const scale = Math.min(scaleX, scaleY);
 
-  // Apply scaling from center whenever it meaningfully differs from 1
+  // Apply scaling from the layout center (not always width/2 — on iPad the
+  // center is shifted right by menu_width/2).
   if (Math.abs(scale - 1.0) > 0.001) {
-    scaleGridByFactor(scale);
+    scaleGridByFactor(scale, layout.centerX, layout.centerY);
   }
-  
+
   // Update edge midpoints
   for (const e of edges) {
     if (!e.active) continue;

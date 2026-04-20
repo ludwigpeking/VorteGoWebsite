@@ -294,7 +294,22 @@
         <div id="sectionPlay" style="display:none;">
           <button id="mobileConfirmBtn" onclick="window.confirmStonePlacement()" style="display:none;" class="primary-btn mobile-confirm-btn" data-i18n="play.placeStone">Place Stone ✓</button>
           <h3 class="panel-section-title" data-i18n="play.title">Play Mode</h3>
+          <div id="turnBanner" class="turn-banner turn-opponent">
+            <span id="turnBannerText" data-i18n="play.opponentTurn">Waiting for opponent…</span>
+          </div>
           <div class="panel-info"><span data-i18n="play.turn">Turn</span>: <strong><span id="gameTurn">Black</span></strong></div>
+          <div id="clockBox" class="clock-box" style="display:none;">
+            <div id="clockRowBlack" class="clock-row">
+              <span class="clock-label" data-i18n="room.black">Black</span>
+              <span class="clock-time"><span id="clockBlack">30s</span></span>
+              <span class="clock-periods">×<span id="periodsBlack">5</span></span>
+            </div>
+            <div id="clockRowWhite" class="clock-row">
+              <span class="clock-label" data-i18n="room.white">White</span>
+              <span class="clock-time"><span id="clockWhite">30s</span></span>
+              <span class="clock-periods">×<span id="periodsWhite">5</span></span>
+            </div>
+          </div>
           <div class="panel-info"><span data-i18n="play.captured">Captured</span> — <span data-i18n="room.black">Black</span>: <span id="capBlack">0</span> · <span data-i18n="room.white">White</span>: <span id="capWhite">0</span></div>
           <span id="gameInfo"></span>
           <div class="panel-buttons">
@@ -306,14 +321,12 @@
             <button id="toggleIndicesBtn" class="panel-btn" data-i18n="play.showStoneIndices">Show Stone Indices</button>
             <button id="scoreBtn" class="panel-btn" data-i18n="play.score">Score (Tromp-Taylor)</button>
             <div class="panel-info"><span data-i18n="room.black">Black</span>: <span id="scoreBlack">0</span> · <span id="komiLabel">White (+7.5)</span>: <span id="scoreWhite">0</span> · <span data-i18n="play.neutral">Neutral</span>: <span id="scoreNeutral">0</span></div>
-            <button id="saveGameBtn" class="panel-btn" data-i18n="play.saveGame">Save Game</button>
-            <button id="loadGameBtn" class="panel-btn" data-i18n="play.loadGame">Load Game</button>
-            <button id="loadGameReviewBtn" class="panel-btn" data-i18n="play.loadGameReview">Load Game Review</button>
             <span id="gameLoadStatus" class="panel-status"></span>
           </div>
           <div id="gameStatusRow" style="display:none;" class="panel-alert"><span id="gameStatus"></span></div>
           <div id="deadStoneRow" style="display:none;" class="panel-info" style="color:#ff8800;">
             <span data-i18n="play.markDead">Click stones to mark dead.</span> <button id="finishMarkingBtn" class="panel-btn" data-i18n="play.finishMarking">Finish Marking</button>
+            <div id="markingProgress" class="panel-status" style="margin-top:6px;"></div>
           </div>
           <div id="resultRow" style="display:none;" class="panel-result"><span id="gameResult"></span></div>
           <div class="panel-info small" data-i18n="play.placeStoneTip">Click a point to place stones. [Ctrl+Z] undo.</div>
@@ -414,9 +427,28 @@
         <select id="colorModeSelect">
           <option value="owner-black" data-i18n="rules.ownerBlack">You (owner) = ⚫ Black · Opponent = ⚪ White</option>
           <option value="owner-white" data-i18n="rules.ownerWhite">You (owner) = ⚪ White · Opponent = ⚫ Black</option>
-          <option value="study" data-i18n="rules.study">Study / Review — both players can move either color</option>
+          <option value="random"      data-i18n="rules.randomColor">Random — server picks colors fairly</option>
+          <option value="study"       data-i18n="rules.study">Study / Review — both players can move either color</option>
         </select>
-        <button id="gameRulesConfirm" class="primary-btn" style="margin-top:18px;" data-i18n="rules.start">Start Game</button>
+        <div id="rulesOpponentRow">
+          <label style="font-size:12px;opacity:.65;margin-top:10px;" data-i18n="rules.invitePlayer">Invite player</label>
+          <select id="rulesOpponentSelect"></select>
+          <div id="rulesOpponentHint" class="form-status" data-i18n="rules.invitePlayerHint">Pick a player in this room. They'll get a confirmation prompt before the game starts.</div>
+        </div>
+        <button id="gameRulesConfirm" class="primary-btn" style="margin-top:18px;" data-i18n="rules.sendInvite">Send Invitation</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Game End Modal (Item 8) -->
+  <div id="gameEndModal" class="modal" style="display:none;">
+    <div class="modal-card">
+      <div class="modal-header">
+        <h3 id="gameEndTitle" style="margin:0;font-family:'Fraunces',serif;" data-i18n="gameEnd.title">Game Over</h3>
+      </div>
+      <p id="gameEndBody" style="margin:14px 0 18px;font-size:15px;line-height:1.5;"></p>
+      <div style="display:flex;justify-content:flex-end;">
+        <button id="gameEndClose" class="primary-btn" data-i18n="gameEnd.dismiss">Dismiss</button>
       </div>
     </div>
   </div>

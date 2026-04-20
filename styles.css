@@ -506,6 +506,93 @@ select {
   margin-bottom: 8px;
 }
 
+/* Whose-turn banner: prominent pulse when it's the local player's turn,
+   muted strip otherwise. Hidden in solo / study / spectator modes. */
+.turn-banner {
+  display: none;
+  padding: 8px 12px;
+  border-radius: 8px;
+  font-family: Helvetica, Arial, sans-serif;
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 0.4px;
+  text-align: center;
+  margin: 6px 0 8px;
+  border: 1px solid transparent;
+  transition: all 0.25s ease;
+}
+.turn-banner.visible { display: block; }
+.turn-banner.turn-yours {
+  background: rgba(242, 183, 5, 0.18);
+  color: var(--amber, #f2b705);
+  border-color: var(--amber, #f2b705);
+  box-shadow: 0 0 0 0 rgba(242, 183, 5, 0.55);
+  animation: turn-pulse 1.4s ease-in-out infinite;
+}
+.turn-banner.turn-opponent {
+  background: rgba(255, 255, 255, 0.04);
+  color: rgba(247, 241, 230, 0.5);
+  border-color: rgba(255, 255, 255, 0.08);
+  animation: none;
+  box-shadow: none;
+}
+@keyframes turn-pulse {
+  0%   { box-shadow: 0 0 0 0   rgba(242, 183, 5, 0.55); }
+  60%  { box-shadow: 0 0 0 10px rgba(242, 183, 5, 0); }
+  100% { box-shadow: 0 0 0 0   rgba(242, 183, 5, 0); }
+}
+
+/* Per-player clocks (item 6) */
+.clock-box {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin: 6px 0 8px;
+  font-family: Helvetica, Arial, sans-serif;
+}
+.clock-row {
+  display: grid;
+  grid-template-columns: 1fr auto auto;
+  gap: 8px;
+  align-items: center;
+  padding: 4px 8px;
+  border-radius: 6px;
+  background: rgba(255,255,255,0.04);
+  border: 1px solid transparent;
+  font-size: 12px;
+}
+.clock-row.clock-active {
+  border-color: var(--amber, #f2b705);
+  background: rgba(242, 183, 5, 0.08);
+}
+.clock-row .clock-label { font-weight: 600; }
+.clock-row .clock-time { font-variant-numeric: tabular-nums; font-weight: 700; }
+.clock-row .clock-periods {
+  font-size: 11px;
+  opacity: 0.7;
+  font-variant-numeric: tabular-nums;
+}
+
+/* Multiplayer transient status toast (challenge sent / declined). */
+.mp-status-toast {
+  position: fixed;
+  top: 20px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 60;
+  background: rgba(16, 20, 28, 0.92);
+  color: var(--paper, #f7f1e6);
+  padding: 10px 16px;
+  border-radius: 8px;
+  border: 1px solid var(--amber, #f2b705);
+  font-family: Helvetica, Arial, sans-serif;
+  font-size: 13px;
+  font-weight: 600;
+  box-shadow: 0 6px 24px rgba(0,0,0,0.5);
+  pointer-events: none;
+  display: none;
+}
+
 .panel-row {
   display: flex;
   flex-direction: row;

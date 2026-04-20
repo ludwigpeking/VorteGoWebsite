@@ -341,9 +341,24 @@ function broadcastRooms() {
   io.emit('rooms:update', list);
 }
 
+function memberListForRoom(room) {
+  // Public roster of socketId + display name for the rules dialog's
+  // invitation dropdown. Excludes the room owner only at render time on the
+  // client (so the host doesn't invite themselves).
+  return Array.from(room.members.values()).map((m) => ({
+    clientId: m.socketId,
+    name: m.name,
+    isHost: m.socketId === room.hostId,
+  }));
+}
+
 function updateRoomCounts(room) {
-  room.count = room.players.filter(Boolean).length + room.spectators.size;
-  io.to(room.id).emit('room:members', { roomId: room.id, count: room.count });
+  room.count = room.members.size;
+  io.to(room.id).emit('room:members', {
+    roomId: room.id,
+    count: room.count,
+    members: memberListForRoom(room),
+  });
   broadcastRooms();
 }
 
@@ -372,42 +387,155 @@ function createRoom(name, socket, user) {
     name,
     hostId: socket.id,
     hostName,
-    players: [null, null],   // filled by joinRoom; [0]=owner(black), [1]=opponent
-    spectators: new Set(),
-    count: 1,
+    // members: every joined socket → { socketId, name, userId }. Replaces the
+    // old fixed [black, white] slot model so rooms can hold N players, with
+    // the active two chosen explicitly via the host invitation flow.
+    members: new Map(),
+    count: 0,
+    challenge: null,         // pending invitation: { fromId, toId, rules, sentAt }
+    game: null,              // active game runtime (clocks, finishedMarking, etc.)
     gameState: null,
-    rules: null,             // set by room:setRules
+    rules: null,             // set by room:setRules (after challenge accepted)
     record: null,            // active game record, managed by beginRoomRecord/finalizeRoomRecord
   };
   rooms.set(roomId, room);
   joinRoom(roomId, socket, user, true);
 }
 
+// ---- Game runtime (clocks, finishMarking, end-of-game) -------------------
+
+const TIME_PER_MOVE_MS = 30 * 1000;   // 30 seconds per move
+const BYO_YOMI_PERIODS = 5;           // 5 reserved countdowns per player
+
+function startGameRuntime(room, blackId, whiteId) {
+  stopGameRuntime(room); // clean up any prior game's timer
+  // Timed mode requires two distinct seated players. Study / solo runs
+  // without a clock — the clock state is still emitted (so the UI can
+  // render placeholders) but no setInterval is started and timeout cannot fire.
+  const timed = !!blackId && !!whiteId && blackId !== whiteId
+    && (room.rules?.colorMode !== 'study');
+  room.game = {
+    blackId,
+    whiteId,
+    activeColor: 'black',         // black plays first
+    clocks: {
+      black: { remainingMs: TIME_PER_MOVE_MS, periodsLeft: BYO_YOMI_PERIODS },
+      white: { remainingMs: TIME_PER_MOVE_MS, periodsLeft: BYO_YOMI_PERIODS },
+    },
+    finishedMarking: new Set(),   // 'black' / 'white' that have confirmed
+    deadStones: new Set(),
+    ended: false,
+    timed,
+    lastTickAt: Date.now(),
+    timerInterval: null,
+  };
+  if (timed) {
+    room.game.timerInterval = setInterval(() => tickGameClock(room), 1000);
+  }
+  broadcastClock(room);
+}
+
+function stopGameRuntime(room) {
+  if (room.game?.timerInterval) {
+    clearInterval(room.game.timerInterval);
+    room.game.timerInterval = null;
+  }
+}
+
+function broadcastClock(room) {
+  const g = room.game;
+  if (!g) return;
+  io.to(room.id).emit('game:clock', {
+    activeColor: g.activeColor,
+    black: { ...g.clocks.black },
+    white: { ...g.clocks.white },
+  });
+}
+
+function tickGameClock(room) {
+  const g = room.game;
+  if (!g || g.ended) return;
+  const c = g.clocks[g.activeColor];
+  c.remainingMs -= 1000;
+  if (c.remainingMs <= 0) {
+    if (c.periodsLeft > 0) {
+      // Spend one byo-yomi period and reset the per-move clock.
+      c.periodsLeft -= 1;
+      c.remainingMs = TIME_PER_MOVE_MS;
+    } else {
+      // Out of periods — timeout loss.
+      const loser = g.activeColor;
+      const winner = loser === 'black' ? 'white' : 'black';
+      endGame(room, {
+        winner,
+        endReason: 'timeout',
+        // No score — timeout overrides points.
+      });
+      return;
+    }
+  }
+  broadcastClock(room);
+}
+
+// On every move (place/pass), reset active player's clock and switch sides.
+function onMoveSwitchClock(room, moveColor) {
+  const g = room.game;
+  if (!g || g.ended) return;
+  // Reset whoever just moved back to a fresh per-move 30s, restoring any
+  // mid-period balance — this is the conventional behaviour: spending
+  // periods is only triggered by timeout, not by playing under one.
+  const moved = g.clocks[moveColor];
+  if (moved) moved.remainingMs = TIME_PER_MOVE_MS;
+  g.activeColor = moveColor === 'black' ? 'white' : 'black';
+  // Give the next player a fresh budget too (their previous turn had its
+  // clock reset when they moved last; this is just a no-op refresh).
+  g.clocks[g.activeColor].remainingMs = Math.min(
+    TIME_PER_MOVE_MS,
+    g.clocks[g.activeColor].remainingMs > 0 ? TIME_PER_MOVE_MS : TIME_PER_MOVE_MS,
+  );
+  broadcastClock(room);
+}
+
+// Finalize the game (via consent score, timeout, resignation, or disconnect).
+// `result` shape:
+//   { winner: 'black'|'white'|'tie',
+//     endReason: 'consent'|'timeout'|'resignation'|'disconnect',
+//     blackTotal?, whiteTotal?, diff?, komi? }
+function endGame(room, result) {
+  const g = room.game;
+  if (!g || g.ended) return;
+  g.ended = true;
+  stopGameRuntime(room);
+  const players = participantInfoForRoom(room);
+  const enriched = {
+    ...result,
+    blackName: players.black?.username || null,
+    whiteName: players.white?.username || null,
+  };
+  io.to(room.id).emit('game:end', enriched);
+  finalizeRoomRecord(room, enriched, result.endReason || 'consent');
+}
+
 // ---- Game record lifecycle (multiplayer, server-authoritative) ----
 
 function participantInfoForRoom(room) {
-  // Map colors (as set by the current rules) to { socketId, userId, username }.
-  // players[0] is the room owner (joined first), players[1] is the opponent.
-  // For study mode (either can play either color) we still label them for the
-  // record name: owner -> black slot, opponent -> white slot.
-  const rules = room.rules || { colorMode: 'owner-black' };
-  const ownerColor = rules.colorMode === 'owner-white' ? 'white' : 'black';
-  const opponentColor = ownerColor === 'black' ? 'white' : 'black';
-
+  // Map colors → { socketId, userId, username }. Source of truth is the
+  // active game's blackId / whiteId (set when a challenge is accepted).
+  // If no game is in progress yet, returns nulls.
   const info = { black: null, white: null };
-  const slots = [
-    { socketId: room.players[0], color: ownerColor },
-    { socketId: room.players[1], color: opponentColor },
-  ];
-  for (const { socketId, color } of slots) {
-    if (!socketId) continue;
+  const fill = (socketId, color) => {
+    if (!socketId) return;
     const client = onlineUsers.get(socketId);
-    if (!client) continue;
+    if (!client) return;
     info[color] = {
       socketId,
       userId: client.userId || null,
       username: client.name,
     };
+  };
+  if (room.game) {
+    fill(room.game.blackId, 'black');
+    fill(room.game.whiteId, 'white');
   }
   return info;
 }
@@ -497,24 +625,30 @@ function joinRoom(roomId, socket, user, isHost = false) {
   if (!room) return;
 
   socket.join(roomId);
-  let role = 'Spectator';
-  let color = null;
 
-  if (room.players[0] === null) {
-    room.players[0] = socket.id;
-    role = 'Black';
-    color = 'black';
-  } else if (room.players[1] === null) {
-    room.players[1] = socket.id;
-    role = 'White';
-    color = 'white';
-  } else {
-    room.spectators.add(socket.id);
-  }
+  // Everyone joins as a "member" first. Their color is decided later, when
+  // the host issues a challenge and the invitee accepts. Late joiners during
+  // an active game become spectators implicitly (they have no color).
+  const client = onlineUsers.get(socket.id);
+  const memberName = client ? client.name : (user ? user.username : `guest-${socket.id.slice(0,4)}`);
+  room.members.set(socket.id, {
+    socketId: socket.id,
+    name: memberName,
+    userId: user?.id || client?.userId || null,
+    joinedAt: Date.now(),
+  });
+  if (client) client.roomId = roomId;
 
   const isRoomHost = isHost || room.hostId === socket.id;
-  const client = onlineUsers.get(socket.id);
-  if (client) client.roomId = roomId;
+
+  // Determine current role/color from the active game (if any). New joiners
+  // mid-game are spectators; the two seated players keep their colors.
+  let role = 'Spectator';
+  let color = null;
+  if (room.game && !room.game.ended) {
+    if (socket.id === room.game.blackId) { role = 'Black'; color = 'black'; }
+    else if (socket.id === room.game.whiteId) { role = 'White'; color = 'white'; }
+  }
 
   updateRoomCounts(room);
 
@@ -525,18 +659,33 @@ function joinRoom(roomId, socket, user, isHost = false) {
     color,
     isHost: isRoomHost,
     count: room.count,
+    members: memberListForRoom(room),
   });
 
-  // Send existing rules (if set) so late-joiners know their color
+  // Send existing rules (if set) so late-joiners know game settings.
   if (room.rules) {
     const { komi, colorMode } = room.rules;
-    const ownerColor = colorMode === 'owner-white' ? 'white' : colorMode === 'study' ? null : 'black';
-    const opponentColor = colorMode === 'owner-white' ? 'black' : colorMode === 'study' ? null : 'white';
-    socket.emit('room:rules', { komi, colorMode, ownerColor, opponentColor });
+    socket.emit('room:rules', {
+      komi,
+      colorMode,
+      // Late-joiner's perspective: they're a spectator unless they're one of
+      // the seated players (handled above via room:joined.color).
+      ownerColor: null,
+      opponentColor: null,
+    });
   }
 
   if (room.gameState) {
     socket.emit('room:state', { roomId: room.id, state: room.gameState });
+  }
+
+  // Push current clock to the late-joiner so spectators see live timers too.
+  if (room.game && !room.game.ended) {
+    socket.emit('game:clock', {
+      activeColor: room.game.activeColor,
+      black: { ...room.game.clocks.black },
+      white: { ...room.game.clocks.white },
+    });
   }
 
   broadcastPresence();
@@ -553,20 +702,27 @@ function leaveRoom(socket) {
     return;
   }
 
-  room.players = room.players.map((playerId) => (playerId === socket.id ? null : playerId));
-  room.spectators.delete(socket.id);
+  // Item 7: if the leaver is a seated player in an active game, the timer
+  // keeps running on their clock — they will lose by 超時 if it runs out.
+  // We do NOT clear blackId/whiteId so the timer keeps ticking on the
+  // absent player; their socket is gone but their seat persists for
+  // timeout purposes.
+
+  room.members.delete(socket.id);
 
   if (room.hostId === socket.id) {
-    const nextHost = room.players.find(Boolean) || Array.from(room.spectators)[0] || null;
-    room.hostId = nextHost;
-    const hostClient = nextHost ? onlineUsers.get(nextHost) : null;
-    room.hostName = hostClient ? hostClient.name : 'Open';
+    // Promote the longest-resident remaining member to host.
+    const remaining = Array.from(room.members.values()).sort((a, b) => a.joinedAt - b.joinedAt);
+    const next = remaining[0] || null;
+    room.hostId = next ? next.socketId : null;
+    room.hostName = next ? next.name : 'Open';
   }
 
   socket.leave(room.id);
   client.roomId = null;
 
-  if (room.players.every((p) => !p) && room.spectators.size === 0) {
+  if (room.members.size === 0) {
+    stopGameRuntime(room);
     rooms.delete(room.id);
   } else {
     updateRoomCounts(room);
@@ -636,16 +792,121 @@ io.on('connection', (socket) => {
     });
   });
 
-  socket.on('room:setRules', (payload) => {
+  // Host sends a challenge to a specific other member. The recipient gets a
+  // confirm prompt; only after they accept does the game actually begin
+  // (with rules applied + colors assigned, possibly randomly).
+  // In study mode or when no opponent is specified (host alone), the game
+  // starts immediately — no invitation flow.
+  socket.on('room:challenge', (payload) => {
     const client = onlineUsers.get(socket.id);
     if (!client || !client.roomId) return;
     const room = rooms.get(client.roomId);
-    if (!room || room.hostId !== socket.id) return; // only host can set rules
-    const { komi = 7.5, colorMode = 'owner-black' } = payload || {};
+    if (!room || room.hostId !== socket.id) return; // only host can invite
+    const opponentId = payload?.opponentClientId;
+    const { komi = 7.5, colorMode = 'owner-black' } = payload?.rules || {};
+
+    // Direct-start path: study mode, or no opponent picked. The host plays
+    // alone (or both seats in study) — no challenge prompt is sent.
+    const validOpponent = opponentId && room.members.has(opponentId) && opponentId !== socket.id;
+    if (colorMode === 'study' || !validOpponent) {
+      room.rules = { komi, colorMode };
+      // For solo / study we still set a clock state so the UI works, but the
+      // game-runtime tick is started only if there are two distinct seated
+      // players. Use the host as black; whiteId may be null.
+      const hostColor = colorMode === 'owner-white' ? 'white' : 'black';
+      const oppColor = hostColor === 'black' ? 'white' : 'black';
+      const blackId = hostColor === 'black' ? socket.id : null;
+      const whiteId = hostColor === 'black' ? null : socket.id;
+      startGameRuntime(room, blackId, whiteId);
+
+      socket.emit('room:rules', {
+        komi, colorMode,
+        yourColor: colorMode === 'study' ? 'study' : hostColor,
+        ownerColor: hostColor,
+        opponentColor: oppColor,
+      });
+      // Spectators get the announcement without a personal color.
+      socket.to(room.id).emit('room:rules', {
+        komi, colorMode,
+        yourColor: null,
+        ownerColor: hostColor,
+        opponentColor: oppColor,
+      });
+      return;
+    }
+
+    room.challenge = {
+      fromId: socket.id,
+      toId: opponentId,
+      rules: { komi, colorMode },
+      sentAt: Date.now(),
+    };
+    const opponentClient = onlineUsers.get(opponentId);
+    io.to(opponentId).emit('room:challenge', {
+      roomId: room.id,
+      roomName: room.name,
+      fromName: client.name,
+      rules: { komi, colorMode },
+    });
+    // Echo back to host so they can show "waiting for accept" UI.
+    socket.emit('room:challengeSent', { toName: opponentClient?.name || '' });
+  });
+
+  socket.on('room:challengeDecline', () => {
+    const client = onlineUsers.get(socket.id);
+    if (!client || !client.roomId) return;
+    const room = rooms.get(client.roomId);
+    if (!room || !room.challenge || room.challenge.toId !== socket.id) return;
+    const hostId = room.challenge.fromId;
+    room.challenge = null;
+    io.to(hostId).emit('room:challengeDeclined', {
+      byName: client.name,
+    });
+  });
+
+  socket.on('room:challengeAccept', () => {
+    const client = onlineUsers.get(socket.id);
+    if (!client || !client.roomId) return;
+    const room = rooms.get(client.roomId);
+    if (!room || !room.challenge || room.challenge.toId !== socket.id) return;
+    const ch = room.challenge;
+    room.challenge = null;
+    const { komi, colorMode } = ch.rules;
+
+    // Resolve which seat plays which color. 'random' picks fairly.
+    let hostColor;
+    if (colorMode === 'owner-white') hostColor = 'white';
+    else if (colorMode === 'owner-black') hostColor = 'black';
+    else if (colorMode === 'random') hostColor = Math.random() < 0.5 ? 'black' : 'white';
+    else hostColor = 'black'; // study mode: arbitrary label
+    const opponentColor = hostColor === 'black' ? 'white' : 'black';
+    const blackId = hostColor === 'black' ? ch.fromId : ch.toId;
+    const whiteId = hostColor === 'black' ? ch.toId : ch.fromId;
+
     room.rules = { komi, colorMode };
-    const ownerColor = colorMode === 'owner-white' ? 'white' : colorMode === 'study' ? null : 'black';
-    const opponentColor = colorMode === 'owner-white' ? 'black' : colorMode === 'study' ? null : 'white';
-    io.to(room.id).emit('room:rules', { komi, colorMode, ownerColor, opponentColor });
+    startGameRuntime(room, blackId, whiteId);
+
+    // Tell each seated player their assigned color individually so the
+    // client doesn't have to figure it out from socket id comparisons.
+    io.to(ch.fromId).emit('room:rules', {
+      komi, colorMode,
+      yourColor: hostColor,
+      ownerColor: hostColor,
+      opponentColor,
+    });
+    io.to(ch.toId).emit('room:rules', {
+      komi, colorMode,
+      yourColor: opponentColor,
+      ownerColor: hostColor,
+      opponentColor,
+    });
+    // Spectators get a generic announcement (no yourColor).
+    socket.to(room.id).except([ch.fromId, ch.toId]).emit('room:rules', {
+      komi, colorMode,
+      yourColor: null,
+      ownerColor: hostColor,
+      opponentColor,
+    });
   });
 
   socket.on('room:message', (payload) => {
@@ -684,8 +945,77 @@ io.on('connection', (socket) => {
     }
     appendRoomMove(room, payload.move);
     socket.to(room.id).emit('game:move', payload);
+    // Reset timer for the player who just moved (per item 6).
+    if (room.game && !room.game.ended) {
+      const moveColor = payload.move.color
+        || (socket.id === room.game.blackId ? 'black'
+            : socket.id === room.game.whiteId ? 'white' : null);
+      if (moveColor === 'black' || moveColor === 'white') {
+        onMoveSwitchClock(room, moveColor);
+      }
+    }
   });
 
+  // Item 5: dead-stone marking is shared between the two seated players.
+  // Either player toggles a stone, the other side mirrors it. Spectators
+  // see updates but cannot toggle.
+  socket.on('game:deadMark', (payload) => {
+    const room = rooms.get(payload?.roomId);
+    if (!room || !room.game || room.game.ended) return;
+    if (socket.id !== room.game.blackId && socket.id !== room.game.whiteId) return;
+    const vid = payload.vid;
+    if (typeof vid !== 'number') return;
+    if (payload.dead) room.game.deadStones.add(vid);
+    else room.game.deadStones.delete(vid);
+    socket.to(room.id).emit('game:deadMark', { vid, dead: !!payload.dead });
+  });
+
+  // Item 5: BOTH players must confirm Finish Marking before the game ends.
+  socket.on('game:finishMarking', (payload) => {
+    const room = rooms.get(payload?.roomId);
+    if (!room || !room.game || room.game.ended) return;
+    let color = null;
+    if (socket.id === room.game.blackId) color = 'black';
+    else if (socket.id === room.game.whiteId) color = 'white';
+    else return; // spectators ignored
+    room.game.finishedMarking.add(color);
+    io.to(room.id).emit('game:markingProgress', {
+      finished: Array.from(room.game.finishedMarking),
+    });
+    if (room.game.finishedMarking.has('black') && room.game.finishedMarking.has('white')) {
+      // Both confirmed — finalize using the score the host computed
+      // (passed alongside the second finishMarking event by the client),
+      // since the host has the authoritative goban geometry.
+      const result = payload?.result || null;
+      const winner = result
+        ? (result.blackTotal === result.whiteTotal ? 'tie'
+           : result.blackTotal > result.whiteTotal ? 'black' : 'white')
+        : 'tie';
+      endGame(room, {
+        winner,
+        endReason: 'consent',
+        blackTotal: result?.blackTotal ?? null,
+        whiteTotal: result?.whiteTotal ?? null,
+        diff: result?.diff ?? null,
+        komi: result?.komi ?? room.rules?.komi ?? null,
+      });
+    }
+  });
+
+  // Resignation — instant loss for the resigning player.
+  socket.on('game:resign', (payload) => {
+    const room = rooms.get(payload?.roomId);
+    if (!room || !room.game || room.game.ended) return;
+    let color = null;
+    if (socket.id === room.game.blackId) color = 'black';
+    else if (socket.id === room.game.whiteId) color = 'white';
+    else return;
+    const winner = color === 'black' ? 'white' : 'black';
+    endGame(room, { winner, endReason: 'resignation' });
+  });
+
+  // Legacy game:end (host computed end after marking) — still accepted as a
+  // fallback so spectator-only flows continue to work.
   socket.on('game:end', (payload) => {
     const room = rooms.get(payload?.roomId);
     if (!room) return;
@@ -694,11 +1024,16 @@ io.on('connection', (socket) => {
   });
 
   socket.on('disconnect', () => {
-    // Finalize any in-flight record for this socket's room BEFORE leaveRoom mutates players[].
+    // Item 7: if a seated player disconnects mid-game, do NOT end the game
+    // immediately — their server-side clock keeps ticking and they will
+    // ultimately lose by timeout (超時負). Only finalize the record when
+    // the room is empty (everyone gone) or the game has otherwise ended.
     const client = onlineUsers.get(socket.id);
     if (client?.roomId) {
       const room = rooms.get(client.roomId);
-      if (room?.record?.active) {
+      const inActiveGame = room?.game && !room.game.ended
+        && (socket.id === room.game.blackId || socket.id === room.game.whiteId);
+      if (room?.record?.active && !inActiveGame) {
         finalizeRoomRecord(room, null, 'disconnect');
       }
     }

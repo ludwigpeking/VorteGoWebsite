@@ -12,6 +12,8 @@ const multiplayerState = {
   memberCount: 0,
   isOwner: false,
   colorMode: null,
+  members: [],            // [{ clientId, name, isHost }] — current room roster
+  pendingStartFn: null,   // host: stash startFn until challenge is accepted
 };
 
 const dom = {};
@@ -297,6 +299,13 @@ function connectSocket() {
   multiplayerState.socket.on('room:rules', onRoomRules);
   multiplayerState.socket.on('room:state', onRoomState);
   multiplayerState.socket.on('game:move', onGameMove);
+  multiplayerState.socket.on('room:challenge', onRoomChallenge);
+  multiplayerState.socket.on('room:challengeSent', onRoomChallengeSent);
+  multiplayerState.socket.on('room:challengeDeclined', onRoomChallengeDeclined);
+  multiplayerState.socket.on('game:clock', onGameClock);
+  multiplayerState.socket.on('game:deadMark', onGameDeadMark);
+  multiplayerState.socket.on('game:markingProgress', onMarkingProgress);
+  multiplayerState.socket.on('game:end', onGameEnd);
   multiplayerState.socket.on('game:recordSaved', (p) => {
     console.log('[record]', p);
   });
@@ -403,6 +412,7 @@ function onRoomJoined(payload) {
   // Set memberCount here so the opponent doesn't miss the room:members broadcast
   // that was sent before room:joined (when roomId was still null on the client).
   multiplayerState.memberCount = payload.count;
+  multiplayerState.members = Array.isArray(payload.members) ? payload.members : [];
   updateRoomUI(payload);
   applyOwnerUI(payload.isHost);
   showRoom();
@@ -442,6 +452,7 @@ function onRoomLeft() {
 function onRoomMembers(payload) {
   if (!payload || payload.roomId !== multiplayerState.roomId) return;
   multiplayerState.memberCount = payload.count;
+  if (Array.isArray(payload.members)) multiplayerState.members = payload.members;
   dom.roomMembers.textContent = t('room.players', { count: payload.count });
   updateMultiplayerState(); // re-evaluate canMove now that member count changed
 }
@@ -485,6 +496,7 @@ function onGameMove(payload) {
   if (window.multiplayerUpdateTurn) window.multiplayerUpdateTurn();
   // Update UI and redraw after applying the remote move
   if (window.updateGameUIRemote) window.updateGameUIRemote();
+  if (window.refreshTurnBanner) window.refreshTurnBanner();
 }
 
 function onRoomRules(payload) {
@@ -492,22 +504,176 @@ function onRoomRules(payload) {
   // New rules = new game session; reset gameStarted so room:state is accepted fresh.
   multiplayerState.gameStarted = false;
   multiplayerState.colorMode = payload.colorMode;
-  const isSpectator = (multiplayerState.role || '').toLowerCase() === 'spectator';
-  // Spectators never get a playing color
-  if (isSpectator) {
-    multiplayerState.color = null;
-  } else if (payload.colorMode === 'study') {
-    // Study mode: owner and opponent can both play freely — mark as 'study'
-    multiplayerState.color = 'study';
+
+  // Server now sends `yourColor` directly (resolved per-recipient — including
+  // random-color rolls). Fall back to the legacy ownerColor/opponentColor
+  // derivation for clients that don't get a personalized payload.
+  if (payload.yourColor !== undefined) {
+    if (payload.colorMode === 'study') multiplayerState.color = 'study';
+    else multiplayerState.color = payload.yourColor; // null = spectator
   } else {
-    multiplayerState.color = multiplayerState.isOwner
-      ? payload.ownerColor
-      : payload.opponentColor;
+    const isSpectator = (multiplayerState.role || '').toLowerCase() === 'spectator';
+    if (isSpectator) multiplayerState.color = null;
+    else if (payload.colorMode === 'study') multiplayerState.color = 'study';
+    else multiplayerState.color = multiplayerState.isOwner ? payload.ownerColor : payload.opponentColor;
   }
+
+  // Refresh role label so the panel header shows Black/White/Spectator
+  // (was previously stuck on whatever role the join handshake assigned).
+  if (multiplayerState.color === 'black') multiplayerState.role = 'Black';
+  else if (multiplayerState.color === 'white') multiplayerState.role = 'White';
+  else if (multiplayerState.color === 'study') multiplayerState.role = 'Study';
+  else multiplayerState.role = 'Spectator';
+  if (dom.roomRole) dom.roomRole.textContent = localizeRole(multiplayerState.role);
+
   updateMultiplayerState();
   // Update komi display
   const komiEl = document.getElementById('komiDisplay');
   if (komiEl) komiEl.textContent = payload.komi;
+
+  // Host has been waiting for the invitee to accept — now that rules are
+  // live, run the deferred goban-load / play-mode setup.
+  if (multiplayerState.pendingStartFn) {
+    const fn = multiplayerState.pendingStartFn;
+    multiplayerState.pendingStartFn = null;
+    try { fn({ komi: payload.komi, colorMode: payload.colorMode }); } catch (e) { console.warn(e); }
+  }
+}
+
+// ---- Challenge / invitation flow (item 4) ----
+
+function onRoomChallenge(payload) {
+  // Invitee receives a game challenge from the host.
+  const msg = t('challenge.message', {
+    from: payload.fromName,
+    roomName: payload.roomName,
+    komi: payload.rules?.komi ?? 7.5,
+    colorMode: localizeColorMode(payload.rules?.colorMode),
+  });
+  // Reuse the inviteModal infrastructure with a one-shot override.
+  if (!dom.inviteModal) return;
+  dom.inviteModalMsg.textContent = msg;
+  dom.inviteModal.style.display = 'flex';
+  dom.inviteAccept.textContent = t('challenge.accept');
+  dom.inviteDecline.textContent = t('challenge.decline');
+  dom.inviteAccept.onclick = () => {
+    dom.inviteModal.style.display = 'none';
+    multiplayerState.socket.emit('room:challengeAccept');
+  };
+  dom.inviteDecline.onclick = () => {
+    dom.inviteModal.style.display = 'none';
+    multiplayerState.socket.emit('room:challengeDecline');
+  };
+}
+
+function onRoomChallengeSent(payload) {
+  // Host sees a "waiting for accept" status. Lightweight toast — the rules
+  // dialog has already been closed by submitChallenge().
+  showTransientStatus(t('challenge.waitingFor', { name: payload?.toName || '?' }));
+}
+
+function onRoomChallengeDeclined(payload) {
+  // Host's invitation was declined.
+  multiplayerState.pendingStartFn = null;
+  showTransientStatus(t('challenge.declinedBy', { name: payload?.byName || '?' }), 6000);
+}
+
+function localizeColorMode(mode) {
+  const map = {
+    'owner-black': t('rules.ownerBlack'),
+    'owner-white': t('rules.ownerWhite'),
+    'random':      t('rules.randomColor'),
+    'study':       t('rules.study'),
+  };
+  return map[mode] || mode || '';
+}
+
+let _statusTimer = null;
+function showTransientStatus(text, ms = 4500) {
+  let el = document.getElementById('mpStatusToast');
+  if (!el) {
+    el = document.createElement('div');
+    el.id = 'mpStatusToast';
+    el.className = 'mp-status-toast';
+    document.body.appendChild(el);
+  }
+  el.textContent = text;
+  el.style.display = 'block';
+  if (_statusTimer) clearTimeout(_statusTimer);
+  _statusTimer = setTimeout(() => { el.style.display = 'none'; }, ms);
+}
+
+// ---- Clock (item 6) ----
+
+function onGameClock(payload) {
+  if (!payload) return;
+  const fmt = (ms) => {
+    const s = Math.max(0, Math.ceil(ms / 1000));
+    return `${s}s`;
+  };
+  const setEl = (id, text) => { const e = document.getElementById(id); if (e) e.textContent = text; };
+  setEl('clockBlack', fmt(payload.black?.remainingMs ?? 0));
+  setEl('clockWhite', fmt(payload.white?.remainingMs ?? 0));
+  setEl('periodsBlack', String(payload.black?.periodsLeft ?? 0));
+  setEl('periodsWhite', String(payload.white?.periodsLeft ?? 0));
+  // Highlight active player's clock.
+  ['Black', 'White'].forEach((c) => {
+    const row = document.getElementById('clockRow' + c);
+    if (row) row.classList.toggle('clock-active', payload.activeColor === c.toLowerCase());
+  });
+}
+
+// ---- Dead marking + finish marking (item 5) ----
+
+function onGameDeadMark(payload) {
+  if (window.applyRemoteDeadMark) window.applyRemoteDeadMark(payload.vid, payload.dead);
+}
+
+function onMarkingProgress(payload) {
+  if (window.applyMarkingProgress) window.applyMarkingProgress(payload.finished || []);
+}
+
+// ---- Game-end modal (item 8) ----
+
+function onGameEnd(payload) {
+  if (!payload) return;
+  showGameEndModal(payload);
+  // Forward to game UI to reset state cleanly.
+  if (window.applyGameEnded) window.applyGameEnded(payload);
+}
+
+function showGameEndModal(result) {
+  const modal = document.getElementById('gameEndModal');
+  const titleEl = document.getElementById('gameEndTitle');
+  const bodyEl = document.getElementById('gameEndBody');
+  const closeBtn = document.getElementById('gameEndClose');
+  if (!modal || !titleEl || !bodyEl) return;
+
+  let title = '';
+  let line = '';
+  const winnerName = result.winner === 'black' ? (result.blackName || t('room.black'))
+                  : result.winner === 'white' ? (result.whiteName || t('room.white'))
+                  : '';
+  if (result.winner === 'tie') {
+    title = t('gameEnd.titleTie');
+    line  = t('gameEnd.tieBody');
+  } else if (result.endReason === 'timeout') {
+    title = t('gameEnd.title');
+    line  = t('gameEnd.byTimeout', { name: winnerName });
+  } else if (result.endReason === 'resignation') {
+    title = t('gameEnd.title');
+    line  = t('gameEnd.byResignation', { name: winnerName });
+  } else {
+    title = t('gameEnd.title');
+    line  = t('gameEnd.byPoints', { name: winnerName, diff: result.diff ?? '?' });
+  }
+  titleEl.textContent = title;
+  bodyEl.textContent = line;
+  modal.style.display = 'flex';
+  if (closeBtn) {
+    closeBtn.textContent = t('gameEnd.dismiss');
+    closeBtn.onclick = () => { modal.style.display = 'none'; };
+  }
 }
 
 function localizeRole(role) {
@@ -760,16 +926,48 @@ window.multiplayerSendGameEnd = (result) => {
   multiplayerState.socket.emit('game:end', { roomId: multiplayerState.roomId, result });
 };
 
-window.multiplayerSendRules = (rules) => {
+// New: host sends a challenge to a specific opponent socket. The startFn is
+// stashed and runs only when the invitee accepts (room:rules arrives).
+// For study mode (or solo room) there's no invitation — startFn runs immediately.
+window.multiplayerSendChallenge = (rules, opponentClientId, startFn) => {
   if (!multiplayerState.roomId) return;
   const { komi = 7.5, colorMode = 'owner-black' } = rules || {};
-  // Apply owner's color locally right away — don't wait for server round-trip.
-  // This ensures multiplayerUpdateTurn() has the correct color when startFn runs.
-  multiplayerState.colorMode = colorMode;
-  const ownerColor = colorMode === 'owner-white' ? 'white' : colorMode === 'study' ? null : 'black';
-  multiplayerState.color = colorMode === 'study' ? 'study' : ownerColor;
-  updateMultiplayerState();
-  multiplayerState.socket.emit('room:setRules', rules);
+  multiplayerState.pendingStartFn = startFn || null;
+  multiplayerState.socket.emit('room:challenge', {
+    rules: { komi, colorMode },
+    opponentClientId,
+  });
+};
+
+// Send game:resign for the current player.
+window.multiplayerResign = () => {
+  if (!multiplayerState.roomId) return;
+  multiplayerState.socket.emit('game:resign', { roomId: multiplayerState.roomId });
+};
+
+// Item 5: each player toggling a dead-stone broadcasts that toggle so the
+// opposing seat mirrors the marking in real time.
+window.multiplayerSendDeadMark = (vid, dead) => {
+  if (!multiplayerState.roomId) return;
+  multiplayerState.socket.emit('game:deadMark', {
+    roomId: multiplayerState.roomId, vid, dead: !!dead,
+  });
+};
+
+// Item 5: confirm finishMarking. Server tallies both confirmations; on the
+// second arrival it emits game:end with the result the host computed.
+window.multiplayerSendFinishMarking = (result) => {
+  if (!multiplayerState.roomId) return;
+  multiplayerState.socket.emit('game:finishMarking', {
+    roomId: multiplayerState.roomId, result,
+  });
+};
+
+// Returns the room roster excluding the local player. Used by the rules
+// dialog to populate the invite-target dropdown.
+window.multiplayerOtherMembers = () => {
+  const selfId = multiplayerState.socket?.id;
+  return multiplayerState.members.filter((m) => m.clientId !== selfId);
 };
 
 window.multiplayerUpdateTurn = () => {
