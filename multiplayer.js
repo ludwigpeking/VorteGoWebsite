@@ -792,32 +792,56 @@ function syncGameState() {
   multiplayerState.socket.emit('game:state', { roomId: multiplayerState.roomId, state });
 }
 
+let _recordFilter = 'mine';
+let _recordSearch = '';
+
 async function loadRecordList() {
   if (!multiplayerState.user) {
     alert(t('records.loginRequiredLoad'));
     return;
   }
+  dom.recordModal.style.display = 'flex';
+  const search = document.getElementById('recordSearchInput');
+  if (search) search.value = _recordSearch;
+  refreshRecordFilterButtons();
+  await refreshRecordList();
+}
+
+function refreshRecordFilterButtons() {
+  document.querySelectorAll('.record-filter-btn').forEach((btn) => {
+    if (btn.dataset.filter === _recordFilter) btn.classList.add('active');
+    else btn.classList.remove('active');
+  });
+}
+
+async function refreshRecordList() {
   dom.recordList.innerHTML = '';
   dom.recordList.textContent = t('records.loading');
-  dom.recordModal.style.display = 'flex';
-  const res = await fetch('/api/games');
-  if (!res.ok) {
+  const params = new URLSearchParams({ filter: _recordFilter });
+  if (_recordSearch) params.set('q', _recordSearch);
+  let data;
+  try {
+    const res = await fetch('/api/games?' + params.toString());
+    if (!res.ok) throw new Error('failed');
+    data = await res.json();
+  } catch (e) {
     dom.recordList.textContent = t('records.failed');
     return;
   }
-  const data = await res.json();
   dom.recordList.innerHTML = '';
+  if (!data.games.length) {
+    const empty = document.createElement('div');
+    empty.style.opacity = '0.6';
+    empty.textContent = t('records.empty');
+    dom.recordList.appendChild(empty);
+    return;
+  }
   data.games.forEach((game) => {
     const item = document.createElement('div');
     item.className = 'record-item';
-    const info = document.createElement('div');
-    const title = document.createElement('strong');
-    title.textContent = game.name;
-    const created = document.createElement('span');
-    created.textContent = game.createdAt;
-    info.appendChild(title);
-    info.appendChild(document.createElement('br'));
-    info.appendChild(created);
+    const info = document.createElement('span');
+    const creator = game.creator ? ` — ${game.creator}` : '';
+    info.textContent = game.name + creator;
     item.appendChild(info);
     const loadBtn = document.createElement('button');
     loadBtn.className = 'ghost-btn';
@@ -827,6 +851,29 @@ async function loadRecordList() {
     dom.recordList.appendChild(item);
   });
 }
+
+function wireRecordModal() {
+  const modal = document.getElementById('recordModal');
+  if (!modal || modal.dataset.wired) return;
+  modal.dataset.wired = '1';
+  document.querySelectorAll('.record-filter-btn').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      _recordFilter = btn.dataset.filter;
+      refreshRecordFilterButtons();
+      refreshRecordList();
+    });
+  });
+  const search = document.getElementById('recordSearchInput');
+  if (search) {
+    let timer = null;
+    search.addEventListener('input', () => {
+      _recordSearch = search.value;
+      clearTimeout(timer);
+      timer = setTimeout(refreshRecordList, 200);
+    });
+  }
+}
+document.addEventListener('DOMContentLoaded', wireRecordModal);
 
 async function loadRecord(id) {
   const res = await fetch(`/api/games/${id}`);

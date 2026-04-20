@@ -115,6 +115,11 @@
         <h2 data-i18n="records.title">Saved Records</h2>
         <button id="recordModalClose" class="icon-btn" data-i18n="auth.close">Close</button>
       </div>
+      <div id="recordFilterRow" style="display:flex; gap:8px; flex-wrap:wrap; margin-bottom:8px;">
+        <button class="ghost-btn record-filter-btn" data-filter="mine" data-i18n="records.filter.mine">My Records</button>
+        <button class="ghost-btn record-filter-btn" data-filter="all" data-i18n="records.filter.all">All</button>
+      </div>
+      <input id="recordSearchInput" type="text" data-i18n-placeholder="records.searchPlaceholder" placeholder="Search by name or player…" style="width:100%; padding:8px 10px; border-radius:8px; border:1px solid rgba(255,255,255,0.12); background:rgba(255,255,255,0.04); color:inherit; margin-bottom:12px; box-sizing:border-box;" />
       <div id="recordList" class="record-list"></div>
     </div>
   </div>

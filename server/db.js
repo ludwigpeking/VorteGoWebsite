@@ -67,6 +67,12 @@ const listGamesStmt = db.prepare(
 const getGameStmt = db.prepare(
   'SELECT id, name, data, created_at FROM games WHERE id = ? AND user_id = ?'
 );
+const getGameAnyStmt = db.prepare(`
+  SELECT g.id, g.name, g.data, g.created_at, g.user_id, u.username AS creator
+  FROM games g
+  LEFT JOIN users u ON u.id = g.user_id
+  WHERE g.id = ?
+`);
 const updateGameStmt = db.prepare(
   'UPDATE games SET name = ?, data = ? WHERE id = ? AND user_id = ?'
 );
@@ -128,8 +134,36 @@ function listGamesByUser(userId) {
   return listGamesStmt.all(userId);
 }
 
+function listGames({ filter = 'all', query = '', userId = null } = {}) {
+  const where = [];
+  const params = [];
+  if (filter === 'mine') {
+    if (!userId) return [];
+    where.push('g.user_id = ?');
+    params.push(userId);
+  }
+  const q = (query || '').trim();
+  if (q) {
+    where.push('(g.name LIKE ? OR u.username LIKE ?)');
+    const like = `%${q}%`;
+    params.push(like, like);
+  }
+  const sql = `
+    SELECT g.id, g.name, g.created_at, g.user_id, u.username AS creator
+    FROM games g
+    LEFT JOIN users u ON u.id = g.user_id
+    ${where.length ? 'WHERE ' + where.join(' AND ') : ''}
+    ORDER BY g.id DESC
+  `;
+  return db.prepare(sql).all(...params);
+}
+
 function getGameById(userId, id) {
   return getGameStmt.get(id, userId);
+}
+
+function getGameByIdAny(id) {
+  return getGameAnyStmt.get(id);
 }
 
 function updateGame({ userId, id, name, data }) {
@@ -191,7 +225,9 @@ module.exports = {
   getUserById,
   createGame,
   listGamesByUser,
+  listGames,
   getGameById,
+  getGameByIdAny,
   updateGame,
   createGoban,
   listGobans,

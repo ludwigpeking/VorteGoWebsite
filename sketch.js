@@ -37,6 +37,7 @@ let relaxFrame = 0;
 let relaxMaxFrames = 20;
 let relaxationStrength = spacing * 0.0008; // Scale relative to grid spacing (50 * 0.0008 = 0.04)
 let relaxMode = 'standard'; // 'standard' | 'compensated' | 'coulomb'
+let coulombDebug = null; // { vid, forces: [{ px, py, fx, fy, w }], net: { fx, fy } }
 let whi = null; // whitehole image
 let bhi = null; // blackhole image
 let woodTexture = null; // wood texture for goban border
@@ -338,20 +339,26 @@ function generateRandomGoban() {
 }
 
 function acceptRandomGoban() {
-  showRulesDialog(() => {
-    mode = 'play';
-    gameStones.clear();
-    currentPlayer = 'black';
-    capturedBlack = 0;
-    capturedWhite = 0;
-    initGameHistory();
-    updateGameUI();
-    showPanelSection('play');
-    currentScreen = 'play';
-    setupPlayButtons();
-    redraw();
-    if (window.multiplayerSyncState) window.multiplayerSyncState();
-  });
+  showRulesDialog(() => enterPlayMode());
+}
+
+// Single entry point for "begin a play-mode session". Used by every goban
+// loader (random / preset / editor / loaded record) so ordering is identical:
+// state reset → currentScreen → panel section → setup → UI refresh → sync.
+function enterPlayMode() {
+  mode = 'play';
+  gameStones.clear();
+  currentPlayer = 'black';
+  capturedBlack = 0;
+  capturedWhite = 0;
+  initGameHistory();
+  currentScreen = 'play';
+  showPanelSection('play');
+  setupPlayButtons();
+  updateUiMode();
+  updateGameUI();           // also calls refreshTurnBanner
+  redraw();
+  if (window.multiplayerSyncState) window.multiplayerSyncState();
 }
 
 function startDesignMode() {
@@ -408,22 +415,8 @@ function loadPresetGoban(presetName) {
     })
     .then(data => {
       restoreGoban(data);
-      // Center and fit the loaded goban to canvas
       centerAndFitGoban();
-      // Show rules dialog then start play mode
-      showRulesDialog(() => {
-        mode = 'play';
-        gameStones.clear();
-        currentPlayer = 'black';
-        capturedBlack = 0;
-        capturedWhite = 0;
-        initGameHistory();
-        showPanelSection('play');
-        setupPlayButtons();
-        updateGameUI();
-        redraw();
-        if (window.multiplayerSyncState) window.multiplayerSyncState();
-      });
+      showRulesDialog(() => enterPlayMode());
     })
     .catch(err => {
       alert(window.t ? t('alert.presetLoadError', { message: err.message }) : `Error loading preset: ${err.message}`);
@@ -711,11 +704,12 @@ function draw() {
   drawEdges();
   drawVertices();
   drawSymbols();
+  drawCoulombDebug();
   if (mode === 'play') {
     drawStones();
     drawStonePreview();
   }
-  
+
   if (relaxing) {
     relaxFrame++;
     updateRelaxStatus();
@@ -1531,6 +1525,81 @@ function drawVertices() {
   }
 }
 
+function drawCoulombDebug() {
+  if (!coulombDebug || coulombDebug.vid == null) return;
+  const v = vertices[coulombDebug.vid];
+  if (!v) return;
+
+  // Raw magnitudes — no clamping. One global scale so arrows compare honestly.
+  // Largest per-frame force maps to ~60 px; everything else is proportional.
+  let maxMag = 1e-9;
+  for (const f of coulombDebug.forces) {
+    const m = Math.hypot(f.fx, f.fy);
+    if (isFinite(m) && m > maxMag) maxMag = m;
+  }
+  const netMag = Math.hypot(coulombDebug.net.fx, coulombDebug.net.fy);
+  maxMag = Math.max(maxMag, netMag);
+  const scale = 60 / maxMag;
+
+  push();
+
+  // Highlight the anchor vertex.
+  noStroke();
+  fill(255, 80, 80, 220);
+  circle(v.x, v.y, 12);
+
+  // Partner lines (faint) + per-partner force arrows.
+  // Red = repulsive (outward from partner), green = attractive (toward partner).
+  for (const f of coulombDebug.forces) {
+    if (!isFinite(f.fx) || !isFinite(f.fy)) continue;
+
+    stroke(255, 255, 255, 60);
+    strokeWeight(1);
+    line(v.x, v.y, f.px, f.py);
+
+    const endX = v.x + f.fx * scale;
+    const endY = v.y + f.fy * scale;
+    // Dot product of force with (v-p) tells us attractive vs repulsive.
+    const dx = v.x - f.px, dy = v.y - f.py;
+    const outward = f.fx * dx + f.fy * dy > 0;
+    if (outward) stroke(255, 70, 70, 220);   // red = repulsive
+    else         stroke(90, 220, 120, 220);  // green = attractive
+    strokeWeight(2);
+    line(v.x, v.y, endX, endY);
+    drawArrowHead(v.x, v.y, endX, endY, 6);
+  }
+
+  // Net force (cyan, bold).
+  if (isFinite(coulombDebug.net.fx) && isFinite(coulombDebug.net.fy)) {
+    stroke(90, 230, 255, 240);
+    strokeWeight(3);
+    const netEndX = v.x + coulombDebug.net.fx * scale;
+    const netEndY = v.y + coulombDebug.net.fy * scale;
+    line(v.x, v.y, netEndX, netEndY);
+    drawArrowHead(v.x, v.y, netEndX, netEndY, 9);
+  }
+
+  // Label: id + partner count + max/net magnitudes.
+  noStroke();
+  fill(255);
+  textAlign(LEFT, BOTTOM);
+  textSize(12);
+  text(`vid=${v.id}  partners=${coulombDebug.forces.length}  maxF=${maxMag.toExponential(2)}  netF=${netMag.toExponential(2)}`, v.x + 10, v.y - 10);
+
+  pop();
+}
+
+function drawArrowHead(x1, y1, x2, y2, size) {
+  const dx = x2 - x1, dy = y2 - y1;
+  const len = Math.hypot(dx, dy) || 1;
+  const ux = dx / len, uy = dy / len;
+  const px = -uy, py = ux;
+  const baseX = x2 - ux * size;
+  const baseY = y2 - uy * size;
+  line(x2, y2, baseX + px * size * 0.5, baseY + py * size * 0.5);
+  line(x2, y2, baseX - px * size * 0.5, baseY - py * size * 0.5);
+}
+
 // ---- UI wiring ----
 function updateUiMode() {
   const el = document.getElementById('mode');
@@ -1606,9 +1675,39 @@ function startRelaxationCoulomb() {
   relaxMode = 'coulomb';
   relaxing = true;
   relaxFrame = 0;
+  relaxMaxFrames = 60; // more iterations, smaller per-step → stable settling
+  // Keep the same debug anchor across runs so the user can watch one vertex
+  // settle over time. Only pick fresh if nothing is selected yet or the
+  // previous pick is no longer movable.
+  const valid = coulombDebug && coulombDebug.vid != null
+    && vertices[coulombDebug.vid] && vertices[coulombDebug.vid].type !== 'edge';
+  if (!valid) {
+    const movable = vertices.filter(v => v.type !== 'edge');
+    coulombDebug = movable.length
+      ? { vid: movable[(Math.random() * movable.length) | 0].id, forces: [], net: { fx: 0, fy: 0 } }
+      : null;
+  } else {
+    coulombDebug.forces = [];
+    coulombDebug.net = { fx: 0, fy: 0 };
+  }
   updateRelaxStatus();
   loop();
 }
+
+// Console helpers: set a specific vertex or re-randomize the debug anchor.
+window.setCoulombDebugVertex = (vid) => {
+  if (vertices[vid]) {
+    coulombDebug = { vid, forces: [], net: { fx: 0, fy: 0 } };
+    redraw();
+  }
+};
+window.resetCoulombDebug = () => {
+  const movable = vertices.filter(v => v.type !== 'edge');
+  coulombDebug = movable.length
+    ? { vid: movable[(Math.random() * movable.length) | 0].id, forces: [], net: { fx: 0, fy: 0 } }
+    : null;
+  redraw();
+};
 
 function updateRelaxStatus() {
   const statusEl = document.getElementById('relaxStatus');
@@ -1744,21 +1843,25 @@ function relaxVerticesCompensated(iterations) {
   }
 }
 
-// Experimental: force-directed relaxation, topology-scoped Coulomb.
+// Experimental: force-directed relaxation, van der Waals-like.
 //
-// Repulsion: every pair of vertices that share a face (a quad or a
-// triangle) repel each other with a softened Coulomb 1/r² force. This
-// includes edge-connected neighbors AND the two diagonals of every quad.
-// Non-face-sharing vertices don't interact, so long-range imbalance can't
-// shove the whole mesh outward.
+// Every pair of vertices that co-inhabit a face (quad or triangle) has a
+// rest length and interacts through two terms:
+//   - Truncated repulsion: Q² · (1/r² − 1/rest²) when r < rest, else 0.
+//     Strong when close, smoothly vanishes at r = rest so it never fights
+//     the spring past equilibrium.
+//   - Hookean spring: k · (r − rest). Zero at r = rest, pulls inward beyond,
+//     pushes outward when compressed.
+// Rest lengths: edges of a face → L; diagonals of a quad → L·√2. Pair
+// weight = number of faces the pair co-inhabits.
 //
-// Attraction: each active edge is a Hookean spring toward the mean edge
-// length.
+// Together the two terms define a clean equilibrium at r = rest for every
+// face-sharing pair, so the mesh converges to the target lattice instead
+// of drifting under unbalanced repulsion.
 //
-// Update order: Gauss-Seidel — each iteration, vertices are visited in a
+// Update order: Gauss-Seidel — each iteration vertices are visited in a
 // freshly-shuffled order and the displacement is applied immediately, so
-// later vertices in the sweep already see the updated positions of earlier
-// ones. Shuffling avoids any directional bias from a fixed sweep order.
+// later vertices already see the updated positions of earlier ones.
 function relaxVerticesCoulomb(iterations) {
   // Mean active-edge length → rest length L.
   let sumLen = 0, edgeCount = 0;
@@ -1770,35 +1873,47 @@ function relaxVerticesCoulomb(iterations) {
   }
   const L = edgeCount > 0 ? sumLen / edgeCount : (typeof spacing !== 'undefined' ? spacing : 50);
 
-  const Q2 = 0.6 * L * L;
-  const eps2 = (0.5 * L) * (0.5 * L);
+  const Q2 = 0.3 * L * L;
   const kSpring = 0.25;
   const globalDamping = 0.25;
   const maxStep = L * 0.02;
+  const SQRT2 = Math.SQRT2;
 
-  // Build repulsion partners: every pair of vertices that share a quad or
-  // triangle. Edge-connected pairs fall out of this automatically (both
-  // ends are in the same face), and quad diagonals are added on top.
-  const partners = new Array(vertices.length);
-  for (let i = 0; i < vertices.length; i++) partners[i] = new Set();
-  const addFacePartners = (verts) => {
-    for (let i = 0; i < verts.length; i++) {
-      for (let j = i + 1; j < verts.length; j++) {
-        partners[verts[i]].add(verts[j]);
-        partners[verts[j]].add(verts[i]);
-      }
+  // Build pair map: every face-sharing pair gets a weight (# of faces it
+  // co-inhabits) and a rest length. Edge beats diagonal if a pair happens
+  // to appear as both (e.g. shared between a quad's edge and another face).
+  const N = vertices.length;
+  const pairs = new Map(); // key → { a, b, w, rest }
+  const keyOf = (a, b) => a < b ? a * N + b : b * N + a;
+  const addPair = (a, b, rest) => {
+    const k = keyOf(a, b);
+    const info = pairs.get(k);
+    if (info) {
+      info.w += 1;
+      if (rest < info.rest) info.rest = rest;
+    } else {
+      pairs.set(k, { a: Math.min(a, b), b: Math.max(a, b), w: 1, rest });
     }
   };
-  for (const q of quads)     if (q.active) addFacePartners(q.verts);
-  for (const t of triangles) if (t.active) addFacePartners(t.verts);
+  const addFace = (verts) => {
+    const n = verts.length;
+    for (let i = 0; i < n; i++) {
+      addPair(verts[i], verts[(i + 1) % n], L);
+    }
+    if (n === 4) {
+      addPair(verts[0], verts[2], L * SQRT2);
+      addPair(verts[1], verts[3], L * SQRT2);
+    }
+  };
+  for (const q of quads)     if (q.active) addFace(q.verts);
+  for (const t of triangles) if (t.active) addFace(t.verts);
 
-  // Spring neighbors: edge-connected only.
-  const edgeNeighbors = new Array(vertices.length);
-  for (let i = 0; i < vertices.length; i++) edgeNeighbors[i] = [];
-  for (const e of edges) {
-    if (!e.active) continue;
-    edgeNeighbors[e.a].push(e.b);
-    edgeNeighbors[e.b].push(e.a);
+  // Per-vertex partner list with rest length for each partner.
+  const partners = new Array(N);
+  for (let i = 0; i < N; i++) partners[i] = [];
+  for (const info of pairs.values()) {
+    partners[info.a].push({ pid: info.b, w: info.w, rest: info.rest });
+    partners[info.b].push({ pid: info.a, w: info.w, rest: info.rest });
   }
 
   // Movable (non-boundary) vertex ids.
@@ -1812,36 +1927,35 @@ function relaxVerticesCoulomb(iterations) {
       const tmp = movable[i]; movable[i] = movable[j]; movable[j] = tmp;
     }
 
-    // Gauss-Seidel sweep: compute and apply each vertex's displacement
-    // before moving on, so subsequent vertices react to the updated state.
     for (const vid of movable) {
       const v = vertices[vid];
       let fxv = 0, fyv = 0;
 
-      // Softened Coulomb from face-sharing partners.
-      for (const pid of partners[vid]) {
+      const capture = coulombDebug && coulombDebug.vid === vid;
+      if (capture) coulombDebug.forces = [];
+
+      for (const { pid, w, rest } of partners[vid]) {
         const p = vertices[pid];
         const dx = v.x - p.x;
         const dy = v.y - p.y;
         const d2 = dx * dx + dy * dy;
-        const d  = Math.sqrt(d2 + eps2);
-        const f  = Q2 / (d2 + eps2);
-        fxv += f * (dx / d);
-        fyv += f * (dy / d);
-      }
+        if (d2 === 0) continue;
+        const d  = Math.sqrt(d2);
+        const ux = dx / d, uy = dy / d;
 
-      // Hookean springs along active edges.
-      for (const nid of edgeNeighbors[vid]) {
-        const n = vertices[nid];
-        const dx = n.x - v.x;
-        const dy = n.y - v.y;
-        const d  = Math.hypot(dx, dy) || 1;
-        const f  = kSpring * (d - L);
-        fxv += f * (dx / d);
-        fyv += f * (dy / d);
+        // Outward-positive scalar force.
+        const rest2 = rest * rest;
+        const fRep    = d < rest ? w * Q2 * (1 / d2 - 1 / rest2) : 0;
+        const fSpring = -w * kSpring * (d - rest); // <0 when d>rest → inward
+        const fScalar = fRep + fSpring;
+        const fx = fScalar * ux;
+        const fy = fScalar * uy;
+        fxv += fx;
+        fyv += fy;
+        if (capture) coulombDebug.forces.push({ px: p.x, py: p.y, fx, fy, w });
       }
+      if (capture) coulombDebug.net = { fx: fxv, fy: fyv };
 
-      // Damped, capped displacement applied immediately.
       let sdx = fxv * globalDamping;
       let sdy = fyv * globalDamping;
       const mag = Math.hypot(sdx, sdy);
@@ -1969,19 +2083,7 @@ function togglePlayMode() {
     updateGameUI();
     redraw();
   } else {
-    showRulesDialog(() => {
-      mode = 'play';
-      gameStones.clear();
-      currentPlayer = 'black';
-      capturedBlack = 0;
-      capturedWhite = 0;
-      initGameHistory();
-      showPanelSection('play');
-      setupPlayButtons();
-      updateUiMode();
-      updateGameUI();
-      redraw();
-    });
+    showRulesDialog(() => enterPlayMode());
   }
 }
 
@@ -2485,19 +2587,23 @@ function computeBoardLayout() {
   const margin = Math.max(8, minDim * 0.025); // 2.5%, never less than 8px
   let centerX = width / 2;
   const centerY = height / 2;
-  let availableWidth = width - 2 * margin;
+  const availableWidth = width - 2 * margin;
   const availableHeight = height - 2 * margin;
-  // iPad-class: room panel (.room-panel) is visible at left and is NOT a
-  // bottom-sheet. Bottom-sheet kicks in at ≤600px (CSS breakpoint).
+
+  // iPad / desktop with side panel: shift the goban center right by half the
+  // panel footprint so the menu doesn't cover stones — but DO NOT shrink the
+  // goban. If shifting fully would push the right edge past the canvas, clamp
+  // the shift so the goban still fits.
   const panelEl = document.getElementById('roomPanel');
   if (panelEl && currentScreen === 'play' && windowWidth > 600) {
     const rect = panelEl.getBoundingClientRect();
     if (rect && rect.width > 0 && rect.right > 0 && rect.left < width) {
-      // Total horizontal footprint of the panel from the left edge of viewport
       const panelFootprint = Math.min(width, rect.right);
-      // Center the goban in the area to the right of the panel.
-      centerX = panelFootprint + (width - panelFootprint) / 2;
-      availableWidth = Math.max(100, width - panelFootprint - margin);
+      const naturalRight = width / 2 + availableWidth / 2;
+      const rightSlack = Math.max(0, width - margin - naturalRight);
+      const desiredShift = panelFootprint / 2;
+      const shift = Math.min(desiredShift, rightSlack);
+      centerX = width / 2 + shift;
     }
   }
   return { centerX, centerY, availableWidth, availableHeight };

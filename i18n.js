@@ -66,6 +66,10 @@
       'records.failed': 'Failed to load.',
       'records.load': 'Load',
       'records.loginRequiredLoad': 'Login required to load records.',
+      'records.empty': 'No records found.',
+      'records.searchPlaceholder': 'Search by name or player…',
+      'records.filter.mine': 'My Records',
+      'records.filter.all': 'All',
 
       // ---- Invite modal ----
       'invite.title': 'Game Invitation',
@@ -302,6 +306,10 @@
       'records.failed': '載入失敗。',
       'records.load': '載入',
       'records.loginRequiredLoad': '需登入才能載入對局記錄。',
+      'records.empty': '找不到記錄。',
+      'records.searchPlaceholder': '依名稱或玩家搜尋…',
+      'records.filter.mine': '我的記錄',
+      'records.filter.all': '全部',
 
       'invite.title': '對局邀請',
       'invite.message': '{from} 邀請你加入「{roomName}」。要立即加入嗎?',
@@ -525,6 +533,10 @@
       'records.failed': '読み込みに失敗しました。',
       'records.load': '読み込む',
       'records.loginRequiredLoad': '棋譜を読み込むにはログインが必要です。',
+      'records.empty': '棋譜が見つかりません。',
+      'records.searchPlaceholder': '名前またはプレイヤーで検索…',
+      'records.filter.mine': '自分の棋譜',
+      'records.filter.all': 'すべて',
 
       'invite.title': '対局への招待',
       'invite.message': '{from} さんが「{roomName}」への参加を招待しています。今すぐ参加しますか?',
@@ -748,6 +760,10 @@
       'records.failed': '불러오기 실패.',
       'records.load': '불러오기',
       'records.loginRequiredLoad': '기보를 불러오려면 로그인이 필요합니다.',
+      'records.empty': '기보가 없습니다.',
+      'records.searchPlaceholder': '이름 또는 플레이어로 검색…',
+      'records.filter.mine': '내 기보',
+      'records.filter.all': '전체',
 
       'invite.title': '대국 초대',
       'invite.message': '{from} 님이 "{roomName}" 방에 초대했습니다. 지금 참여하시겠습니까?',
@@ -926,17 +942,32 @@
     return s.replace(/\{(\w+)\}/g, (_, k) => (params[k] !== undefined ? params[k] : `{${k}}`));
   }
 
+  function detectSystemLang() {
+    const candidates = Array.isArray(navigator.languages) && navigator.languages.length
+      ? navigator.languages
+      : [navigator.language || navigator.userLanguage || ''];
+    for (const raw of candidates) {
+      const tag = (raw || '').toLowerCase();
+      if (!tag) continue;
+      const primary = tag.split('-')[0];
+      if (SUPPORTED.includes(primary)) return primary;
+    }
+    return FALLBACK;
+  }
+
   const I18N = {
     get lang() { return this._lang; },
     _lang: FALLBACK,
 
     init() {
       const stored = localStorage.getItem(STORAGE_KEY);
-      this._lang = SUPPORTED.includes(stored) ? stored : FALLBACK;
+      this._lang = SUPPORTED.includes(stored) ? stored : detectSystemLang();
       document.documentElement.lang = this._lang;
       this.apply();
       this.markActiveLangButtons();
     },
+
+    detectSystemLang,
 
     setLang(lang) {
       if (!SUPPORTED.includes(lang)) return;

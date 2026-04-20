@@ -18,7 +18,9 @@ const {
   getUserById,
   createGame,
   listGamesByUser,
+  listGames,
   getGameById,
+  getGameByIdAny,
   createGoban,
   listGobans,
   getGobanById,
@@ -247,22 +249,27 @@ app.post('/api/auth/reset-password', (req, res) => {
 });
 
 app.get('/api/games', requireAuth, (req, res) => {
-  const games = listGamesByUser(req.user.id).map((game) => ({
-    id: game.id,
-    name: game.name,
-    createdAt: game.created_at,
+  const filter = (req.query.filter || 'mine').toString();
+  const query = (req.query.q || '').toString();
+  const rows = listGames({ filter, query, userId: req.user.id }).map((g) => ({
+    id: g.id,
+    name: g.name,
+    creator: g.creator || 'guest',
+    isMine: g.user_id === req.user.id,
+    createdAt: g.created_at,
   }));
-  return res.json({ games });
+  return res.json({ games: rows });
 });
 
 app.get('/api/games/:id', requireAuth, (req, res) => {
-  const game = getGameById(req.user.id, Number(req.params.id));
+  const game = getGameByIdAny(Number(req.params.id));
   if (!game) {
     return res.status(404).json({ message: 'Not found.' });
   }
   return res.json({
     id: game.id,
     name: game.name,
+    creator: game.creator || 'guest',
     createdAt: game.created_at,
     data: JSON.parse(game.data),
   });

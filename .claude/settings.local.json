@@ -15,7 +15,8 @@
       "Bash(node -e \"const {db}=require\\('./server/db'\\); console.log\\(db.prepare\\('SELECT id, name FROM games'\\).all\\(\\)\\); db.prepare\\('DELETE FROM games'\\).run\\(\\); console.log\\('cleared, now:', db.prepare\\('SELECT COUNT\\(*\\) AS n FROM games'\\).get\\(\\).n\\);\")",
       "Bash(node --check game_reviewer.js)",
       "Bash(node *)",
-      "Bash(grep -E \"^\\\\.gitignore$\")"
+      "Bash(grep -E \"^\\\\.gitignore$\")",
+      "Bash(git log *)"
     ]
   }
 }
