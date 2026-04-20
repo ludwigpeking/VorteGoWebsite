@@ -2325,13 +2325,7 @@ function updateGameUI() {
   if (turnEl) turnEl.textContent = window.t ? t(currentPlayer === 'black' ? 'room.black' : 'room.white') : (currentPlayer === 'black' ? 'Black' : 'White');
   if (capBlackEl) capBlackEl.textContent = capturedBlack;
   if (capWhiteEl) capWhiteEl.textContent = capturedWhite;
-  if (gameInfoEl) {
-    if (mode === 'play') {
-      gameInfoEl.textContent = `Turn: ${currentPlayer.toUpperCase()} | Captured: Black ${capturedBlack}, White ${capturedWhite}`;
-    } else {
-      gameInfoEl.textContent = '';
-    }
-  }
+  if (gameInfoEl) gameInfoEl.textContent = '';
   if (window.multiplayerUpdateTurn) window.multiplayerUpdateTurn();
   refreshTurnBanner();
 }
@@ -2346,26 +2340,39 @@ function refreshTurnBanner() {
   const ms = window.multiplayerState;
   const inGame = mode === 'play' && currentScreen === 'play';
   const competitive = ms && ms.active && (ms.color === 'black' || ms.color === 'white') && (ms.memberCount || 0) >= 2 && ms.colorMode !== 'study';
-  // Sync the clockBox visibility with the same predicate — clocks only run
-  // for competitive multiplayer games.
+
+  // Clock box shows only for competitive multiplayer.
   const clockBox = document.getElementById('clockBox');
   if (clockBox) {
     clockBox.style.display = (inGame && competitive && !gameEnded) ? 'flex' : 'none';
   }
-  if (!inGame || !competitive || gameEnded || markingDeadStones) {
+
+  if (!inGame || gameEnded || markingDeadStones) {
     banner.classList.remove('visible', 'turn-yours', 'turn-opponent');
     return;
   }
-  const yours = ms.color === currentPlayer;
+
+  const colorWord = (window.t
+    ? t(currentPlayer === 'black' ? 'room.black' : 'room.white')
+    : (currentPlayer === 'black' ? 'Black' : 'White'));
+
   banner.classList.add('visible');
+
+  if (!competitive) {
+    // Solo / study / spectator — neutral indicator with no pulse / chime.
+    banner.classList.add('turn-opponent');
+    banner.classList.remove('turn-yours');
+    text.textContent = (window.t ? t('play.turn') : 'Turn') + ': ' + colorWord;
+    banner.dataset.lastYours = '0';
+    return;
+  }
+
+  const yours = ms.color === currentPlayer;
   if (yours) {
     banner.classList.add('turn-yours');
     banner.classList.remove('turn-opponent');
-    const colorWord = (window.t ? t(ms.color === 'black' ? 'room.black' : 'room.white')
-                                 : (ms.color === 'black' ? 'Black' : 'White'));
     text.textContent = window.t ? t('play.yourTurn', { color: colorWord })
                                  : `Your turn (${colorWord})`;
-    // Subtle audio cue when the turn flips to local player.
     if (banner.dataset.lastYours !== '1') {
       try { playTurnChime(); } catch {}
     }
