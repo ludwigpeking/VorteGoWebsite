@@ -24,7 +24,14 @@
   SD.R = 250;                 // display radius in world units
   SD.camYaw = 0;
   SD.camPitch = 0.35;
-  SD.camDist = 800;
+  // Narrow FOV + long camera distance = near-isometric / telephoto look.
+  SD.camFovDeg = 24;
+  SD.camDist = 2400;           // placeholder — overridden by fitCamDist() at activate
+  // Opponent's camera state, set via window.StarDomination.onOpponentCamera
+  // (socket-synced in multiplayer). Null when single-player or before the
+  // first opponent update arrives.
+  SD.opponentEye = null;
+  SD._lastCameraEmit = 0;
   SD.dragging = false;
   SD.lastMouse = { x: 0, y: 0 };
   SD.hoverVid = null;
@@ -476,17 +483,21 @@
     });
 
     SD.camera = new THREE.PerspectiveCamera(
-      60, iw / ih, 1, 10000
+      SD.camFovDeg, iw / ih, 1, 20000
     );
 
-    // Lights — strong so the globe has obvious shading and the wood grain
-    // reads well in the dim atmospheric background.
-    SD.ambientLight = new THREE.AmbientLight(0xffffff, 0.9);
+    // Soft player lights: each player's directional light produces a smooth
+    // lit hemisphere — natural gradient, no hard edge. Two-player games
+    // have both lights at their respective camera positions (synced via
+    // socket), so each player can see where the other is looking by the
+    // second lit zone on the globe.
+    SD.ambientLight = new THREE.AmbientLight(0xffffff, 0.35);
     SD.scene.add(SD.ambientLight);
-    SD.keyLight = new THREE.DirectionalLight(0xfff0d0, 2.2);
+    SD.keyLight = new THREE.DirectionalLight(0xffe8a8, 2.8);
     SD.scene.add(SD.keyLight);
     SD.scene.add(SD.keyLight.target);
-    SD.fillLight = new THREE.DirectionalLight(0x8aa0c8, 1.1);
+    SD.fillLight = new THREE.DirectionalLight(0xa8c0ff, 2.8);
+    SD.fillLight.visible = false; // on only when an opponent is present
     SD.scene.add(SD.fillLight);
     SD.scene.add(SD.fillLight.target);
 
@@ -617,13 +628,33 @@
   }
 
   function eyePos() {
-    const cp = Math.cos(SD.camPitch), sp = Math.sin(SD.camPitch);
-    const cy = Math.cos(SD.camYaw), sy = Math.sin(SD.camYaw);
+    return eyeFrom(SD.camYaw, SD.camPitch, SD.camDist);
+  }
+
+  function eyeFrom(yaw, pitch, dist) {
+    const cp = Math.cos(pitch), sp = Math.sin(pitch);
+    const cy = Math.cos(yaw), sy = Math.sin(yaw);
+    return { x: dist * cp * sy, y: dist * sp, z: dist * cp * cy };
+  }
+
+  // Compute the camera-distance range such that the sphere always fits
+  // the current viewport (both axes). All values depend on viewport aspect
+  // so portrait mobile gets a farther base than landscape desktop.
+  function camDistBounds() {
+    const aspect = window.innerWidth / Math.max(1, window.innerHeight);
+    const tanHalf = Math.tan((SD.camFovDeg * Math.PI / 180) / 2);
+    const minFit = SD.R / (tanHalf * Math.min(aspect, 1));
     return {
-      x: SD.camDist * cp * sy,
-      y: SD.camDist * sp,
-      z: SD.camDist * cp * cy,
+      base: minFit * 1.25,
+      min:  minFit * 1.05,
+      max:  minFit * 4.0,
     };
+  }
+
+  function clampCamDist() {
+    const b = camDistBounds();
+    if (SD.camDist < b.min) SD.camDist = b.min;
+    if (SD.camDist > b.max) SD.camDist = b.max;
   }
 
   function updateCamera() {
@@ -642,7 +673,7 @@
     const uy = rz * fw.x - rx * fw.z;
     const uz = rx * fw.y - ry * fw.x;
 
-    const tanHalf = Math.tan(Math.PI / 6);
+    const tanHalf = Math.tan((SD.camFovDeg * Math.PI / 180) / 2);
     const worldPerPx = 2 * SD.camDist * tanHalf / window.innerHeight;
 
     // Panel offset — shifts the sphere away from whichever side of the
@@ -673,13 +704,18 @@
     SD.keyLight.target.updateMatrixWorld();
     const ms = window.multiplayerState;
     const twoPlayer = ms && ms.active && (ms.memberCount || 0) >= 2;
-    if (twoPlayer) {
+    if (twoPlayer && SD.opponentEye) {
+      const eo = eyeFrom(SD.opponentEye.yaw, SD.opponentEye.pitch, SD.opponentEye.dist);
+      SD.fillLight.position.set(eo.x, eo.y, eo.z);
+      SD.fillLight.visible = true;
+    } else if (twoPlayer) {
+      // Opponent in room but no camera update yet — mirror viewer for now.
       SD.fillLight.position.set(-eye.x, -eye.y, -eye.z);
-      SD.fillLight.intensity = 1.1;
+      SD.fillLight.visible = true;
     } else {
-      SD.fillLight.position.set(1200, -900, 1000);
-      SD.fillLight.intensity = 0.8;
+      SD.fillLight.visible = false;
     }
+
     SD.fillLight.target.position.set(0, 0, 0);
     SD.fillLight.target.updateMatrixWorld();
 
@@ -772,6 +808,17 @@
     updateCamera();
     updateStones();
     updateHoverRing();
+    // Throttled opponent-camera sync: emit at most every 100 ms when
+    // we're in a multiplayer room. No-op in single-player.
+    const now = (typeof performance !== 'undefined' && performance.now)
+      ? performance.now()
+      : Date.now();
+    if (now - SD._lastCameraEmit > 100 &&
+        typeof window.__sdEmitCamera === 'function' &&
+        window.multiplayerState && window.multiplayerState.active) {
+      window.__sdEmitCamera(SD.camYaw, SD.camPitch, SD.camDist);
+      SD._lastCameraEmit = now;
+    }
     SD.renderer.render(SD.scene, SD.camera);
   }
 
@@ -816,8 +863,7 @@
     if (!SD.active) return;
     e.preventDefault();
     SD.camDist *= Math.exp(e.deltaY * 0.001);
-    if (SD.camDist < SD.R * 1.5) SD.camDist = SD.R * 1.5;
-    if (SD.camDist > SD.R * 6) SD.camDist = SD.R * 6;
+    clampCamDist();
   }
 
   function onDoubleClick(e) {
@@ -830,11 +876,13 @@
 
   function onResize() {
     if (!SD.sceneReady || !SD.active) return;
-    // updateStyle=true (default) keeps the canvas element's CSS width/height
-    // in sync so mobile vh quirks don't leave it sized wrong.
     SD.renderer.setSize(window.innerWidth, window.innerHeight);
     SD.camera.aspect = window.innerWidth / window.innerHeight;
     SD.camera.updateProjectionMatrix();
+    // Aspect-dependent zoom range — re-clamp in case we were zoomed in
+    // close on landscape and then rotated to portrait (sphere would
+    // overflow horizontally without a re-clamp).
+    clampCamDist();
   }
 
   // ---- Touch handlers ----
@@ -895,8 +943,8 @@
       const d = Math.hypot(a.clientX - b.clientX, a.clientY - b.clientY);
       const ratio = _pinchPrevDist / (d || 1);
       SD.camDist *= ratio;
-      if (SD.camDist < SD.R * 1.5) SD.camDist = SD.R * 1.5;
-      if (SD.camDist > SD.R * 6) SD.camDist = SD.R * 6;
+      // Zoom clamp adapts to viewport aspect so the sphere always fits.
+      clampCamDist();
       _pinchPrevDist = d;
     }
   }
@@ -959,6 +1007,18 @@
   // Lifecycle
   // ==============================================================
 
+  // Called by multiplayer.js when the opponent broadcasts their orbit
+  // state. We keep (yaw, pitch, dist) and use the derived world position
+  // for the opponent's spotlight — so each player's spotlight actually
+  // lights the hemisphere they're looking at.
+  SD.onOpponentCamera = function (payload) {
+    if (!payload) return;
+    const y = typeof payload.yaw === 'number' ? payload.yaw : 0;
+    const p = typeof payload.pitch === 'number' ? payload.pitch : 0;
+    const d = typeof payload.dist === 'number' ? payload.dist : SD.camDist;
+    SD.opponentEye = { yaw: y, pitch: p, dist: d };
+  };
+
   // Multiplayer re-entry: the opponent's client receives the goban via
   // applyGameSnapshot, which writes pos3 onto the game's vertex array.
   // This hook pulls that pos3 data into the module-private mesh buffers
@@ -981,7 +1041,8 @@
     SD.hoverVid = null;
     SD.camYaw = 0;
     SD.camPitch = 0.35;
-    SD.camDist = 800;
+    SD.camDist = camDistBounds().base;
+    SD.opponentEye = null;
     SD.canvas.style.display = 'block';
     // Make sure size is fresh in case of a resize while hidden.
     SD.renderer.setSize(window.innerWidth, window.innerHeight);

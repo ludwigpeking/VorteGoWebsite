@@ -298,6 +298,12 @@ function connectSocket() {
   multiplayerState.socket.on('room:invite', onRoomInvite);
   multiplayerState.socket.on('room:rules', onRoomRules);
   multiplayerState.socket.on('room:state', onRoomState);
+  // Star Domination opponent-camera relay.
+  multiplayerState.socket.on('game:camera', (payload) => {
+    if (window.StarDomination && typeof window.StarDomination.onOpponentCamera === 'function') {
+      window.StarDomination.onOpponentCamera(payload);
+    }
+  });
   multiplayerState.socket.on('game:move', onGameMove);
   multiplayerState.socket.on('room:challenge', onRoomChallenge);
   multiplayerState.socket.on('room:challengeSent', onRoomChallengeSent);
@@ -789,6 +795,16 @@ function sendInvite() {
   if (!target || !multiplayerState.roomId) return;
   multiplayerState.socket.emit('room:invite', { roomId: multiplayerState.roomId, toClientId: target });
 }
+
+// Lets star_domination.js emit the local orbit state through the current
+// socket connection. No-op when we're not in a multiplayer room.
+window.__sdEmitCamera = function (yaw, pitch, dist) {
+  if (!multiplayerState.roomId || !multiplayerState.socket) return;
+  multiplayerState.socket.emit('game:camera', {
+    roomId: multiplayerState.roomId,
+    yaw, pitch, dist,
+  });
+};
 
 function syncGameState() {
   if (!multiplayerState.roomId || !window.getGameSnapshot) return;

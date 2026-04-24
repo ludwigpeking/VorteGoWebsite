@@ -410,6 +410,7 @@ function enterPlayMode() {
   setupPlayButtons();
   updateUiMode();
   updateGameUI();           // also calls refreshTurnBanner
+  refreshViewportUi();      // mobile confirm button appears now that we're in play mode
   redraw();
   if (window.multiplayerSyncState) window.multiplayerSyncState();
 }

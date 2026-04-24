@@ -944,6 +944,21 @@ io.on('connection', (socket) => {
     socket.to(room.id).emit('room:state', { roomId: room.id, state: room.gameState });
   });
 
+  // Star Domination camera sync: each player emits their orbit state so
+  // the other side can render that player's "spotlight" at the correct
+  // position on the sphere. Pure relay — no server-side state, throttled
+  // client-side.
+  socket.on('game:camera', (payload) => {
+    const room = rooms.get(payload?.roomId);
+    if (!room) return;
+    socket.to(room.id).emit('game:camera', {
+      fromClientId: socket.id,
+      yaw: payload.yaw,
+      pitch: payload.pitch,
+      dist: payload.dist,
+    });
+  });
+
   socket.on('game:move', (payload) => {
     const room = rooms.get(payload?.roomId);
     if (!room || !payload?.move) return;
