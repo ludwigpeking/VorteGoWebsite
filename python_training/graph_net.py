@@ -110,96 +110,111 @@ class HexGoNet(nn.Module):
             else:
                 self.blocks.append(ResidualGCNBlock(hidden_dim, activation))
         
-        # Policy head
+        # Policy head — per-vertex scalar
         self.policy_conv = GCNConv(hidden_dim, 128)
         self.policy_bn = nn.BatchNorm1d(128)
-        self.policy_fc = nn.Linear(128, 1)  # Per-node move probability
-        
-        # Value head
+        self.policy_fc = nn.Linear(128, 1)
+
+        # Value head — global scalar in [-1, 1]
         self.value_conv = GCNConv(hidden_dim, 64)
         self.value_bn = nn.BatchNorm1d(64)
-        # Global pooling + FC layers
         self.value_fc1 = nn.Linear(64 + 64, 256)  # 64 from graph + 64 from global
         self.value_fc2 = nn.Linear(256, 1)
-        
-    def forward(self, data: Data) -> Tuple[torch.Tensor, torch.Tensor]:
+
+        # Ownership head — per-vertex scalar in [-1, 1] (KataGo's per-intersection
+        # ownership prediction, conv_ownership in model_pytorch.py:1405). Trained
+        # against post-Benson final ownership labels (+1 black, -1 white, 0 neutral).
+        self.ownership_conv = GCNConv(hidden_dim, 64)
+        self.ownership_bn = nn.BatchNorm1d(64)
+        self.ownership_fc = nn.Linear(64, 1)
+
+        # Score head — two scalars per graph: (score_mean, score_stdev).
+        # score_mean is the predicted final |white_score - black_score|;
+        # score_stdev is uncertainty (positive). Mirrors KataGo's whiteLead +
+        # whiteScoreMean / scoreStdev outputs (nninputs.h:122-126).
+        self.score_conv = GCNConv(hidden_dim, 32)
+        self.score_bn = nn.BatchNorm1d(32)
+        self.score_fc1 = nn.Linear(32 + 64, 128)
+        self.score_mean_fc = nn.Linear(128, 1)
+        self.score_stdev_fc = nn.Linear(128, 1)
+
+    def forward(self, data: Data) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
         """
-        Forward pass
-        
-        Args:
-            data: PyTorch Geometric Data object with:
-                - x: node features [num_nodes, input_dim]
-                - edge_index: edge connectivity [2, num_edges]
-                - u: global features [batch_size, 2] or [2]
-                - batch: batch assignment for nodes
-        
+        Forward pass.
+
         Returns:
-            policy_logits: [num_nodes] move probabilities
-            value: [batch_size] win probability
+            policy_logits:  [total_nodes]      per-vertex move logits
+            value:          [batch_size]       win probability in [-1, 1]
+            ownership:      [total_nodes]      per-vertex ownership in [-1, 1]
+            score_mean:     [batch_size]       expected final score margin
+            score_stdev:    [batch_size]       score uncertainty (positive)
         """
         x, edge_index = data.x, data.edge_index
         u = data.u if hasattr(data, 'u') else None
         batch = data.batch if hasattr(data, 'batch') else torch.zeros(x.size(0), dtype=torch.long, device=x.device)
-        
+
         # Embed input
         x = self.input_embed(x)
-        
-        # Handle global features - ensure correct dimensions
+
+        # Handle global features
         if u is not None:
-            # If u is 1D [2], reshape to [1, 2]
             if u.dim() == 1:
                 u = u.unsqueeze(0)
             u_embed = self.global_embed(u)
         else:
             num_graphs = batch.max().item() + 1
             u_embed = torch.zeros((num_graphs, 64), device=x.device, dtype=x.dtype)
-        
+
         # Residual tower
         for block in self.blocks:
             x = block(x, edge_index)
-        
-        # Policy head
-        policy = self.policy_conv(x, edge_index)
-        policy = self.policy_bn(policy)
-        policy = F.relu(policy)
-        policy_logits = self.policy_fc(policy).squeeze(-1)  # [num_nodes]
-        
-        # Value head
-        value = self.value_conv(x, edge_index)
-        value = self.value_bn(value)
-        value = F.relu(value)
-        
-        # Global pooling (aggregate all nodes per graph)
-        value_pooled = global_mean_pool(value, batch)  # [batch_size, 64]
-        
-        # Concatenate with global features
-        value_cat = torch.cat([value_pooled, u_embed], dim=1)
-        
-        value = F.relu(self.value_fc1(value_cat))
-        value = torch.tanh(self.value_fc2(value))  # [batch_size, 1]
-        
-        return policy_logits, value.squeeze(-1)
-    
+
+        # --- Policy head ---
+        p = self.policy_conv(x, edge_index)
+        p = self.policy_bn(p)
+        p = F.relu(p)
+        policy_logits = self.policy_fc(p).squeeze(-1)  # [total_nodes]
+
+        # --- Value head ---
+        v = self.value_conv(x, edge_index)
+        v = self.value_bn(v)
+        v = F.relu(v)
+        v_pooled = global_mean_pool(v, batch)  # [batch_size, 64]
+        v_cat = torch.cat([v_pooled, u_embed], dim=1)
+        v = F.relu(self.value_fc1(v_cat))
+        value = torch.tanh(self.value_fc2(v)).squeeze(-1)  # [batch_size]
+
+        # --- Ownership head ---
+        o = self.ownership_conv(x, edge_index)
+        o = self.ownership_bn(o)
+        o = F.relu(o)
+        ownership = torch.tanh(self.ownership_fc(o).squeeze(-1))  # [total_nodes]
+
+        # --- Score head ---
+        s = self.score_conv(x, edge_index)
+        s = self.score_bn(s)
+        s = F.relu(s)
+        s_pooled = global_mean_pool(s, batch)  # [batch_size, 32]
+        s_cat = torch.cat([s_pooled, u_embed], dim=1)
+        s_hidden = F.relu(self.score_fc1(s_cat))
+        score_mean = self.score_mean_fc(s_hidden).squeeze(-1)  # [batch_size], unbounded
+        # Stdev must be positive — softplus + small offset for numerical stability.
+        score_stdev = F.softplus(self.score_stdev_fc(s_hidden).squeeze(-1)) + 1e-3
+
+        return policy_logits, value, ownership, score_mean, score_stdev
+
     def predict(self, data: Data, valid_moves: list) -> Tuple[torch.Tensor, float]:
-        """
-        Predict for single board state
-        
-        Returns:
-            policy: [num_valid_moves] probability distribution over valid moves
-            value: scalar win probability
-        """
+        """Backwards-compatible single-state predict — returns (policy, value)
+        like the pre-C1 API. Use forward() directly to get all heads."""
         self.eval()
         with torch.no_grad():
-            policy_logits, value = self.forward(data)
-            
-            # Filter to valid moves and apply softmax
+            policy_logits, value, _own, _sm, _ss = self.forward(data)
             if valid_moves:
                 valid_logits = policy_logits[valid_moves]
                 policy = F.softmax(valid_logits, dim=0)
             else:
                 policy = torch.zeros(1)
-            
-            return policy, value.item()
+            return policy, value.item() if value.dim() == 0 else value[0].item()
 
 def create_model(
     config: str = 'medium',

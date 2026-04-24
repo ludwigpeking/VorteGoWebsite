@@ -1,0 +1,63 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Spheric Goban — Test</title>
+  <script src="p5.js"></script>
+  <style>
+    html, body { margin: 0; padding: 0; background: #1a1a1a; color: #eee; font-family: system-ui, sans-serif; overflow: hidden; }
+    #panel {
+      position: fixed; top: 10px; left: 10px; z-index: 10;
+      background: rgba(30, 30, 30, 0.85); padding: 12px 14px; border-radius: 8px;
+      min-width: 260px; box-shadow: 0 2px 10px rgba(0,0,0,0.4);
+    }
+    #panel h3 { margin: 0 0 8px 0; font-size: 14px; font-weight: 600; }
+    #panel button {
+      display: inline-block; margin: 3px 3px; padding: 6px 10px;
+      background: #2a6; color: #fff; border: none; border-radius: 4px;
+      font-size: 12px; cursor: pointer;
+    }
+    #panel button:hover { background: #3b7; }
+    #panel button:disabled { background: #555; cursor: not-allowed; }
+    #info { margin-top: 8px; font-size: 12px; line-height: 1.5; color: #ccc; }
+    #info b { color: #fff; }
+    .row { margin-bottom: 4px; }
+    label { font-size: 11px; color: #aaa; margin-right: 6px; }
+    select, input[type=range] { font-size: 11px; }
+    .hint { font-size: 10px; color: #888; margin-top: 8px; }
+  </style>
+</head>
+<body>
+  <div id="panel">
+    <h3>Spheric Goban — 3D Test</h3>
+    <div class="row">
+      <label>Subdiv level:</label>
+      <select id="levelSel">
+        <option value="1" selected>ν=2 (42 → ~162 final)</option>
+        <option value="1.5">ν=3 (92 → ~362 final)</option>
+        <option value="2">ν=4 (162 → ~642 final)</option>
+      </select>
+    </div>
+    <div class="row">
+      <button id="btnReset">1. Icosphere</button>
+      <button id="btnMerge">2. Merge tris</button>
+    </div>
+    <div class="row">
+      <button id="btnQuad">3. Quadrangulate</button>
+      <button id="btnRelax">4. Relax 2000</button>
+    </div>
+    <div class="row">
+      <button id="btnAllInOne">All in one</button>
+      <button id="btnToggleVerts">Toggle verts</button>
+    </div>
+    <div id="info">
+      <div><b>Verts:</b> <span id="vCount">-</span></div>
+      <div><b>Tris:</b> <span id="tCount">-</span> &nbsp; <b>Quads:</b> <span id="qCount">-</span></div>
+      <div><b>Edge len:</b> min <span id="eMin">-</span> / mean <span id="eMean">-</span> / max <span id="eMax">-</span></div>
+    </div>
+    <div class="hint">Drag to rotate · Scroll to zoom</div>
+  </div>
+  <script src="sphere_goban.js"></script>
+</body>
+</html>

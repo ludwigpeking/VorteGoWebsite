@@ -82,11 +82,21 @@ function nearestVertex(px, py) {
 function ensureCanvas() {
   const w = windowWidth;
   const h = canvasHeight();
+  const in3D = !!(window.StarDomination && window.StarDomination.active);
+  // In 3D mode, three.js owns its own canvas — just hide the p5 canvas so
+  // it doesn't render on top of it. In 2D mode, ensure the p5 canvas exists
+  // and is visible.
+  const existing = document.querySelector('#app canvas.p5Canvas');
+  if (in3D) {
+    if (existing) existing.style.display = 'none';
+    return;
+  }
   if (!canvasCreated) {
     const c = createCanvas(w, h);
     c.parent('app');
     canvasCreated = true;
   } else {
+    if (existing) existing.style.display = '';
     resizeCanvas(w, h);
   }
 }
@@ -120,18 +130,38 @@ function setup() {
   // Don't create canvas yet - wait for room menu selection
   noLoop();
   setupMenuListeners();
+
+  // Expose hooks the three.js star-domination renderer needs to read/write
+  // sketch.js's let-scoped state and invoke the game-rules pipeline.
+  window.__sdGetGameStones = () => gameStones;
+  window.__sdGetCurrentPlayer = () => currentPlayer;
+  window.__sdGetVertices = () => vertices;
+  window.__sdGetQuads = () => quads;
+  window.__sdGetMode = () => mode;
+  window.__sdSetHoverVertex = (v) => { hoverVertex = v; };
+  window.__sdTryPlaceStone = (vid) => {
+    if (mode !== 'play') return false;
+    hoverVertex = vid;
+    return tryPlaceAtHover();
+  };
 }
 
 function setupMenuListeners() {
   // Room menu
   document.getElementById('menuRandomGoban')?.addEventListener('click', startRandomGoban);
   document.getElementById('menuPresetGoban')?.addEventListener('click', showPresetMenu);
+  document.getElementById('menuStarDomination')?.addEventListener('click', showStarDominationMenu);
   document.getElementById('menuDesignGoban')?.addEventListener('click', startDesignMode);
   document.getElementById('menuLoadGoban')?.addEventListener('click', startLoadGoban);
   document.getElementById('menuSettings')?.addEventListener('click', showSettings);
+  document.getElementById('backToMenuFromSD')?.addEventListener('click', showMainMenu);
+  document.querySelectorAll('#starDominationMenu [data-sd-size]').forEach((btn) => {
+    btn.addEventListener('click', () => loadStarDominationGoban(btn.dataset.sdSize));
+  });
 
-  // Preset menu
-  document.querySelectorAll('.preset-btn').forEach(btn => {
+  // Preset menu — scoped to #presetMenu so .preset-btn buttons reused in
+  // sibling menus (like #starDominationMenu) don't also trigger loadPresetGoban.
+  document.querySelectorAll('#presetMenu .preset-btn').forEach(btn => {
     btn.addEventListener('click', (e) => loadPresetGoban(e.target.dataset.preset));
   });
   document.getElementById('backToMenuFromPreset')?.addEventListener('click', showMainMenu);
@@ -272,13 +302,19 @@ function showRulesDialog(startFn) {
 }
 
 function showMainMenu() {
+  // Leave 3D mode cleanly if we were in it.
+  if (window.StarDomination && window.StarDomination.active) {
+    window.StarDomination.stop();
+  }
+
   document.getElementById('presetMenu').style.display = 'none';
+  document.getElementById('starDominationMenu').style.display = 'none';
   document.getElementById('app').style.display = 'none';
   const placeholder = document.getElementById('roomPlaceholder');
   if (placeholder) placeholder.style.display = 'flex';
   showPanelSection('roomMenu');
   currentScreen = 'room-menu';
-  
+
   // Clear play mode and stones when returning to menu
   if (mode === 'play') {
     mode = 'move-vertex';
@@ -287,15 +323,30 @@ function showMainMenu() {
     capturedBlack = 0;
     capturedWhite = 0;
   }
-  
+
   noLoop();
 }
 
 function showPresetMenu() {
+  if (window.StarDomination && window.StarDomination.active) {
+    window.StarDomination.stop();
+  }
   document.getElementById('presetMenu').style.display = 'block';
+  document.getElementById('starDominationMenu').style.display = 'none';
   document.getElementById('app').style.display = 'none';
   showPanelSection('roomMenu');
   currentScreen = 'preset';
+}
+
+function showStarDominationMenu() {
+  if (window.StarDomination && window.StarDomination.active) {
+    window.StarDomination.stop();
+  }
+  document.getElementById('starDominationMenu').style.display = 'block';
+  document.getElementById('presetMenu').style.display = 'none';
+  document.getElementById('app').style.display = 'none';
+  showPanelSection('roomMenu');
+  currentScreen = 'starDomination';
 }
 
 function startRandomGoban() {
@@ -386,6 +437,8 @@ function loadPresetGoban(presetName) {
   if (placeholder) placeholder.style.display = 'none';
   currentScreen = 'play';
 
+  // Make sure the canvas is 2D (in case we're coming back from sphere mode).
+  if (window.StarDomination) window.StarDomination.stop();
   ensureCanvas();
 
   // Map preset names to their JSON files
@@ -422,6 +475,67 @@ function loadPresetGoban(presetName) {
       alert(window.t ? t('alert.presetLoadError', { message: err.message }) : `Error loading preset: ${err.message}`);
       showMainMenu();
     });
+}
+
+// 3D spherical goban entry point. Generates the mesh procedurally (no JSON
+// file), installs it into vertices/quads, switches the canvas to WEBGL so
+// star_domination.js can draw, then follows the normal play-mode flow.
+// `size` is 'small' | 'medium' | 'large' — passed through to generateMesh.
+function loadStarDominationGoban(size) {
+  if (!window.StarDomination) {
+    alert('StarDomination module missing');
+    showMainMenu();
+    return;
+  }
+  document.getElementById('starDominationMenu').style.display = 'none';
+  document.getElementById('app').style.display = 'block';
+  const placeholder = document.getElementById('roomPlaceholder');
+  if (placeholder) placeholder.style.display = 'none';
+  currentScreen = 'play';
+
+  // 1. Generate the mesh. This is a one-shot synchronous compute that runs
+  // icosphere → merge → quadrangulate → compensated relax. Larger sizes take
+  // a noticeable fraction of a second.
+  const mesh = window.StarDomination.generateMesh(size || 'small');
+
+  // 2. Install into the game's globals in the format restoreGoban uses, with
+  // pos3 attached so the 3D renderer can read it back.
+  vertices = [];
+  edges = [];
+  edgeByKey.clear();
+  edgeTris.clear();
+  triangles = [];
+  quads = [];
+  for (let i = 0; i < mesh.verts.length; i++) {
+    const p = mesh.verts[i];
+    vertices.push({
+      id: i,
+      x: 0, y: 0, // unused in 3D mode, but some 2D-assuming code may read them
+      type: 'inner', q: 0, r: 0,
+      neighbors: new Set(),
+      triangles: new Set(),
+      quads: new Set(),
+      peers: [i, i, i],
+      visible: true,
+      pos3: { x: p.x, y: p.y, z: p.z },
+    });
+  }
+  mesh.quads.forEach((q, idx) => {
+    quads.push({ id: idx, verts: q.verts.slice(), active: true });
+  });
+  rebuildEdgesFromFaces(); // populates vertices[].neighbors from quad edges
+  markVisibleVertices();
+
+  // 3. Activate the three.js renderer (spawns its canvas, starts RAF loop)
+  //    and hide the p5 canvas.
+  window.StarDomination.activate();
+  ensureCanvas();
+  // p5's draw loop isn't needed for the 3D mode, but leave it running in
+  // case other 2D overlays want a redraw later.
+  noLoop();
+
+  // 4. Show rules dialog, then enter play mode.
+  showRulesDialog(() => enterPlayMode());
 }
 
 function showSettings() {
@@ -697,6 +811,12 @@ function refreshViewportUi() {
 }
 
 function draw() {
+  // 3D spherical goban runs on its own three.js canvas + RAF loop (see
+  // star_domination.js). p5's draw path is bypassed entirely in that mode.
+  if (window.StarDomination && window.StarDomination.active) {
+    return;
+  }
+
   clear();
   drawGobanBorder();
   drawSectors();
@@ -903,6 +1023,9 @@ function keyCoord(q, r) {
 
 // ---- Interaction ----
 function mouseMoved() {
+  // 3D mode: three.js attaches its own DOM mouse listeners, so p5's handler
+  // is a no-op in that mode.
+  if (window.StarDomination && window.StarDomination.active) return;
   updateHover();
 }
 
@@ -935,6 +1058,7 @@ function tryPlaceAtHover() {
 }
 
 function mousePressed() {
+  if (window.StarDomination && window.StarDomination.active) return;
   if (mode === 'delete-edge' && hoverEdge !== null) {
     deleteEdgeMirrored(hoverEdge);
     redraw();
@@ -1001,6 +1125,7 @@ window.confirmStonePlacement = function () {
 };
 
 function mouseDragged() {
+  if (window.StarDomination && window.StarDomination.active) return;
   if (dragging === null) return;
   const dx = movedX;
   const dy = movedY;
@@ -1009,10 +1134,21 @@ function mouseDragged() {
 }
 
 function mouseReleased() {
+  if (window.StarDomination && window.StarDomination.active) return;
   if (dragging !== null) {
     window.dragStateCapture = false;
   }
   dragging = null;
+}
+
+function doubleClicked() {
+  // 3D mode: three.js attaches its own dblclick listener.
+  if (window.StarDomination && window.StarDomination.active) return;
+}
+
+function mouseWheel(event) {
+  // 3D mode: three.js handles wheel on its own canvas.
+  if (window.StarDomination && window.StarDomination.active) return;
 }
 
 function handlePass(isRemote = false) {

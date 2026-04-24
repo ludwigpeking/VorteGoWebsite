@@ -1,0 +1,1769 @@
+{
+  "goban": "Shumi.json",
+  "num_vertices": 127,
+  "sims_per_move": 50,
+  "device": "cuda",
+  "max_moves": 400,
+  "moves": [
+    {
+      "move_num": 0,
+      "player": "black",
+      "move": 106,
+      "captured_count": 0,
+      "legal_count_before": 127,
+      "stones_on_board": 1,
+      "root_value_est": -0.0029,
+      "root_children_expanded": 128,
+      "top5_by_visits": [
+        {
+          "move": 59,
+          "visits": 3,
+          "prior": 0.0265,
+          "q": -0.0034
+        },
+        {
+          "move": 21,
+          "visits": 2,
+          "prior": 0.0199,
+          "q": -0.0011
+        },
+        {
+          "move": 26,
+          "visits": 2,
+          "prior": 0.0206,
+          "q": -0.0011
+        },
+        {
+          "move": 41,
+          "visits": 2,
+          "prior": 0.0138,
+          "q": -0.0011
+        },
+        {
+          "move": 65,
+          "visits": 2,
+          "prior": 0.014,
+          "q": -0.0011
+        }
+      ],
+      "mcts_time_sec": 7.341,
+      "invariants": [
+        {
+          "name": "sum(children.visits) == num_sims",
+          "passed": true,
+          "detail": "50 vs 50"
+        },
+        {
+          "name": "all priors >= 0",
+          "passed": true,
+          "detail": "min=0.0008"
+        },
+        {
+          "name": "sum(priors) ~= 1",
+          "passed": true,
+          "detail": "sum=1.0000"
+        },
+        {
+          "name": "no duplicate child moves",
+          "passed": true,
+          "detail": "128 children, 128 unique"
+        },
+        {
+          "name": "all child moves legal or pass",
+          "passed": true,
+          "detail": "illegal children: []"
+        }
+      ]
+    },
+    {
+      "move_num": 1,
+      "player": "white",
+      "move": 71,
+      "captured_count": 0,
+      "legal_count_before": 126,
+      "stones_on_board": 2,
+      "root_value_est": -0.0053,
+      "root_children_expanded": 127,
+      "top5_by_visits": [
+        {
+          "move": 72,
+          "visits": 3,
+          "prior": 0.0231,
+          "q": -0.0013
+        },
+        {
+          "move": 3,
+          "visits": 2,
+          "prior": 0.0141,
+          "q": 0.0011
+        },
+        {
+          "move": 7,
+          "visits": 2,
+          "prior": 0.0166,
+          "q": 0.0011
+        },
+        {
+          "move": 35,
+          "visits": 2,
+          "prior": 0.0162,
+          "q": 0.0011
+        },
+        {
+          "move": 60,
+          "visits": 2,
+          "prior": 0.0167,
+          "q": 0.0011
+        }
+      ],
+      "mcts_time_sec": 5.446,
+      "invariants": [
+        {
+          "name": "sum(children.visits) == num_sims",
+          "passed": true,
+          "detail": "50 vs 50"
+        },
+        {
+          "name": "all priors >= 0",
+          "passed": true,
+          "detail": "min=0.0016"
+        },
+        {
+          "name": "sum(priors) ~= 1",
+          "passed": true,
+          "detail": "sum=1.0000"
+        },
+        {
+          "name": "no duplicate child moves",
+          "passed": true,
+          "detail": "127 children, 127 unique"
+        },
+        {
+          "name": "all child moves legal or pass",
+          "passed": true,
+          "detail": "illegal children: []"
+        }
+      ]
+    },
+    {
+      "move_num": 2,
+      "player": "black",
+      "move": 36,
+      "captured_count": 0,
+      "legal_count_before": 125,
+      "stones_on_board": 3,
+      "root_value_est": -0.0031,
+      "root_children_expanded": 126,
+      "top5_by_visits": [
+        {
+          "move": 115,
+          "visits": 3,
+          "prior": 0.025,
+          "q": -0.0034
+        },
+        {
+          "move": 5,
+          "visits": 2,
+          "prior": 0.0153,
+          "q": -0.0011
+        },
+        {
+          "move": 6,
+          "visits": 2,
+          "prior": 0.0155,
+          "q": -0.0011
+        },
+        {
+          "move": 10,
+          "visits": 2,
+          "prior": 0.0176,
+          "q": -0.0011
+        },
+        {
+          "move": 35,
+          "visits": 2,
+          "prior": 0.0153,
+          "q": -0.0011
+        }
+      ],
+      "mcts_time_sec": 6.318,
+      "invariants": [
+        {
+          "name": "sum(children.visits) == num_sims",
+          "passed": true,
+          "detail": "50 vs 50"
+        },
+        {
+          "name": "all priors >= 0",
+          "passed": true,
+          "detail": "min=0.0033"
+        },
+        {
+          "name": "sum(priors) ~= 1",
+          "passed": true,
+          "detail": "sum=1.0000"
+        },
+        {
+          "name": "no duplicate child moves",
+          "passed": true,
+          "detail": "126 children, 126 unique"
+        },
+        {
+          "name": "all child moves legal or pass",
+          "passed": true,
+          "detail": "illegal children: []"
+        }
+      ]
+    },
+    {
+      "move_num": 3,
+      "player": "white",
+      "move": 19,
+      "captured_count": 0,
+      "legal_count_before": 124,
+      "stones_on_board": 4,
+      "root_value_est": -0.0044,
+      "root_children_expanded": 125,
+      "top5_by_visits": [
+        {
+          "move": 48,
+          "visits": 3,
+          "prior": 0.0251,
+          "q": -0.0013
+        },
+        {
+          "move": 0,
+          "visits": 2,
+          "prior": 0.0177,
+          "q": 0.0011
+        },
+        {
+          "move": 20,
+          "visits": 2,
+          "prior": 0.0157,
+          "q": 0.0011
+        },
+        {
+          "move": 21,
+          "visits": 2,
+          "prior": 0.0216,
+          "q": 0.0011
+        },
+        {
+          "move": 31,
+          "visits": 2,
+          "prior": 0.019,
+          "q": 0.0011
+        }
+      ],
+      "mcts_time_sec": 6.416,
+      "invariants": [
+        {
+          "name": "sum(children.visits) == num_sims",
+          "passed": true,
+          "detail": "50 vs 50"
+        },
+        {
+          "name": "all priors >= 0",
+          "passed": true,
+          "detail": "min=0.0009"
+        },
+        {
+          "name": "sum(priors) ~= 1",
+          "passed": true,
+          "detail": "sum=1.0000"
+        },
+        {
+          "name": "no duplicate child moves",
+          "passed": true,
+          "detail": "125 children, 125 unique"
+        },
+        {
+          "name": "all child moves legal or pass",
+          "passed": true,
+          "detail": "illegal children: []"
+        }
+      ]
+    },
+    {
+      "move_num": 4,
+      "player": "black",
+      "move": 21,
+      "captured_count": 0,
+      "legal_count_before": 123,
+      "stones_on_board": 5,
+      "root_value_est": -0.0031,
+      "root_children_expanded": 124,
+      "top5_by_visits": [
+        {
+          "move": 104,
+          "visits": 4,
+          "prior": 0.0334,
+          "q": -0.0046
+        },
+        {
+          "move": 67,
+          "visits": 3,
+          "prior": 0.0255,
+          "q": -0.0034
+        },
+        {
+          "move": 21,
+          "visits": 2,
+          "prior": 0.0168,
+          "q": -0.0011
+        },
+        {
+          "move": 68,
+          "visits": 2,
+          "prior": 0.0144,
+          "q": -0.0011
+        },
+        {
+          "move": 95,
+          "visits": 2,
+          "prior": 0.0195,
+          "q": -0.0011
+        }
+      ],
+      "mcts_time_sec": 5.751,
+      "invariants": [
+        {
+          "name": "sum(children.visits) == num_sims",
+          "passed": true,
+          "detail": "50 vs 50"
+        },
+        {
+          "name": "all priors >= 0",
+          "passed": true,
+          "detail": "min=0.0015"
+        },
+        {
+          "name": "sum(priors) ~= 1",
+          "passed": true,
+          "detail": "sum=1.0000"
+        },
+        {
+          "name": "no duplicate child moves",
+          "passed": true,
+          "detail": "124 children, 124 unique"
+        },
+        {
+          "name": "all child moves legal or pass",
+          "passed": true,
+          "detail": "illegal children: []"
+        }
+      ]
+    },
+    {
+      "move_num": 5,
+      "player": "white",
+      "move": 109,
+      "captured_count": 0,
+      "legal_count_before": 122,
+      "stones_on_board": 6,
+      "root_value_est": -0.005,
+      "root_children_expanded": 123,
+      "top5_by_visits": [
+        {
+          "move": 27,
+          "visits": 5,
+          "prior": 0.0404,
+          "q": -0.0032
+        },
+        {
+          "move": 1,
+          "visits": 2,
+          "prior": 0.0139,
+          "q": 0.0011
+        },
+        {
+          "move": 9,
+          "visits": 2,
+          "prior": 0.0187,
+          "q": 0.0011
+        },
+        {
+          "move": 38,
+          "visits": 2,
+          "prior": 0.0165,
+          "q": 0.0011
+        },
+        {
+          "move": 53,
+          "visits": 2,
+          "prior": 0.0178,
+          "q": 0.0011
+        }
+      ],
+      "mcts_time_sec": 5.802,
+      "invariants": [
+        {
+          "name": "sum(children.visits) == num_sims",
+          "passed": true,
+          "detail": "50 vs 50"
+        },
+        {
+          "name": "all priors >= 0",
+          "passed": true,
+          "detail": "min=0.0037"
+        },
+        {
+          "name": "sum(priors) ~= 1",
+          "passed": true,
+          "detail": "sum=1.0000"
+        },
+        {
+          "name": "no duplicate child moves",
+          "passed": true,
+          "detail": "123 children, 123 unique"
+        },
+        {
+          "name": "all child moves legal or pass",
+          "passed": true,
+          "detail": "illegal children: []"
+        }
+      ]
+    },
+    {
+      "move_num": 6,
+      "player": "black",
+      "move": 70,
+      "captured_count": 0,
+      "legal_count_before": 121,
+      "stones_on_board": 7,
+      "root_value_est": -0.0031,
+      "root_children_expanded": 122,
+      "top5_by_visits": [
+        {
+          "move": 23,
+          "visits": 3,
+          "prior": 0.0237,
+          "q": -0.0034
+        },
+        {
+          "move": 28,
+          "visits": 3,
+          "prior": 0.0305,
+          "q": -0.0034
+        },
+        {
+          "move": 29,
+          "visits": 2,
+          "prior": 0.0153,
+          "q": -0.0011
+        },
+        {
+          "move": 72,
+          "visits": 2,
+          "prior": 0.0176,
+          "q": -0.0011
+        },
+        {
+          "move": 99,
+          "visits": 2,
+          "prior": 0.0157,
+          "q": -0.0011
+        }
+      ],
+      "mcts_time_sec": 5.744,
+      "invariants": [
+        {
+          "name": "sum(children.visits) == num_sims",
+          "passed": true,
+          "detail": "50 vs 50"
+        },
+        {
+          "name": "all priors >= 0",
+          "passed": true,
+          "detail": "min=0.0015"
+        },
+        {
+          "name": "sum(priors) ~= 1",
+          "passed": true,
+          "detail": "sum=1.0000"
+        },
+        {
+          "name": "no duplicate child moves",
+          "passed": true,
+          "detail": "122 children, 122 unique"
+        },
+        {
+          "name": "all child moves legal or pass",
+          "passed": true,
+          "detail": "illegal children: []"
+        }
+      ]
+    },
+    {
+      "move_num": 7,
+      "player": "white",
+      "move": 41,
+      "captured_count": 0,
+      "legal_count_before": 120,
+      "stones_on_board": 8,
+      "root_value_est": -0.0044,
+      "root_children_expanded": 121,
+      "top5_by_visits": [
+        {
+          "move": 13,
+          "visits": 2,
+          "prior": 0.0142,
+          "q": 0.0011
+        },
+        {
+          "move": 43,
+          "visits": 2,
+          "prior": 0.0175,
+          "q": 0.0011
+        },
+        {
+          "move": 49,
+          "visits": 2,
+          "prior": 0.0189,
+          "q": 0.0011
+        },
+        {
+          "move": 79,
+          "visits": 2,
+          "prior": 0.0161,
+          "q": 0.0011
+        },
+        {
+          "move": 84,
+          "visits": 2,
+          "prior": 0.0187,
+          "q": 0.0011
+        }
+      ],
+      "mcts_time_sec": 5.689,
+      "invariants": [
+        {
+          "name": "sum(children.visits) == num_sims",
+          "passed": true,
+          "detail": "50 vs 50"
+        },
+        {
+          "name": "all priors >= 0",
+          "passed": true,
+          "detail": "min=0.0023"
+        },
+        {
+          "name": "sum(priors) ~= 1",
+          "passed": true,
+          "detail": "sum=1.0000"
+        },
+        {
+          "name": "no duplicate child moves",
+          "passed": true,
+          "detail": "121 children, 121 unique"
+        },
+        {
+          "name": "all child moves legal or pass",
+          "passed": true,
+          "detail": "illegal children: []"
+        }
+      ]
+    },
+    {
+      "move_num": 8,
+      "player": "black",
+      "move": 53,
+      "captured_count": 0,
+      "legal_count_before": 119,
+      "stones_on_board": 9,
+      "root_value_est": -0.0029,
+      "root_children_expanded": 120,
+      "top5_by_visits": [
+        {
+          "move": 9,
+          "visits": 2,
+          "prior": 0.0148,
+          "q": -0.001
+        },
+        {
+          "move": 17,
+          "visits": 2,
+          "prior": 0.0183,
+          "q": -0.001
+        },
+        {
+          "move": 50,
+          "visits": 2,
+          "prior": 0.015,
+          "q": -0.001
+        },
+        {
+          "move": 51,
+          "visits": 2,
+          "prior": 0.0168,
+          "q": -0.001
+        },
+        {
+          "move": 53,
+          "visits": 2,
+          "prior": 0.0181,
+          "q": -0.001
+        }
+      ],
+      "mcts_time_sec": 5.581,
+      "invariants": [
+        {
+          "name": "sum(children.visits) == num_sims",
+          "passed": true,
+          "detail": "50 vs 50"
+        },
+        {
+          "name": "all priors >= 0",
+          "passed": true,
+          "detail": "min=0.0050"
+        },
+        {
+          "name": "sum(priors) ~= 1",
+          "passed": true,
+          "detail": "sum=1.0000"
+        },
+        {
+          "name": "no duplicate child moves",
+          "passed": true,
+          "detail": "120 children, 120 unique"
+        },
+        {
+          "name": "all child moves legal or pass",
+          "passed": true,
+          "detail": "illegal children: []"
+        }
+      ]
+    },
+    {
+      "move_num": 9,
+      "player": "white",
+      "move": 83,
+      "captured_count": 0,
+      "legal_count_before": 118,
+      "stones_on_board": 10,
+      "root_value_est": -0.0047,
+      "root_children_expanded": 119,
+      "top5_by_visits": [
+        {
+          "move": 12,
+          "visits": 3,
+          "prior": 0.0252,
+          "q": -0.0013
+        },
+        {
+          "move": 6,
+          "visits": 2,
+          "prior": 0.0147,
+          "q": 0.0011
+        },
+        {
+          "move": 24,
+          "visits": 2,
+          "prior": 0.0165,
+          "q": 0.0011
+        },
+        {
+          "move": 28,
+          "visits": 2,
+          "prior": 0.0204,
+          "q": 0.0011
+        },
+        {
+          "move": 29,
+          "visits": 2,
+          "prior": 0.0168,
+          "q": 0.0011
+        }
+      ],
+      "mcts_time_sec": 5.476,
+      "invariants": [
+        {
+          "name": "sum(children.visits) == num_sims",
+          "passed": true,
+          "detail": "50 vs 50"
+        },
+        {
+          "name": "all priors >= 0",
+          "passed": true,
+          "detail": "min=0.0014"
+        },
+        {
+          "name": "sum(priors) ~= 1",
+          "passed": true,
+          "detail": "sum=1.0000"
+        },
+        {
+          "name": "no duplicate child moves",
+          "passed": true,
+          "detail": "119 children, 119 unique"
+        },
+        {
+          "name": "all child moves legal or pass",
+          "passed": true,
+          "detail": "illegal children: []"
+        }
+      ]
+    },
+    {
+      "move_num": 10,
+      "player": "black",
+      "move": 52,
+      "captured_count": 0,
+      "legal_count_before": 117,
+      "stones_on_board": 11,
+      "root_value_est": -0.0029,
+      "root_children_expanded": 118,
+      "top5_by_visits": [
+        {
+          "move": 29,
+          "visits": 3,
+          "prior": 0.0261,
+          "q": -0.0034
+        },
+        {
+          "move": 74,
+          "visits": 3,
+          "prior": 0.0242,
+          "q": -0.0034
+        },
+        {
+          "move": 94,
+          "visits": 3,
+          "prior": 0.0275,
+          "q": -0.0034
+        },
+        {
+          "move": 122,
+          "visits": 3,
+          "prior": 0.0284,
+          "q": -0.0034
+        },
+        {
+          "move": 4,
+          "visits": 2,
+          "prior": 0.0184,
+          "q": -0.001
+        }
+      ],
+      "mcts_time_sec": 6.081,
+      "invariants": [
+        {
+          "name": "sum(children.visits) == num_sims",
+          "passed": true,
+          "detail": "50 vs 50"
+        },
+        {
+          "name": "all priors >= 0",
+          "passed": true,
+          "detail": "min=0.0009"
+        },
+        {
+          "name": "sum(priors) ~= 1",
+          "passed": true,
+          "detail": "sum=1.0000"
+        },
+        {
+          "name": "no duplicate child moves",
+          "passed": true,
+          "detail": "118 children, 118 unique"
+        },
+        {
+          "name": "all child moves legal or pass",
+          "passed": true,
+          "detail": "illegal children: []"
+        }
+      ]
+    },
+    {
+      "move_num": 11,
+      "player": "white",
+      "move": 12,
+      "captured_count": 0,
+      "legal_count_before": 116,
+      "stones_on_board": 12,
+      "root_value_est": -0.0052,
+      "root_children_expanded": 117,
+      "top5_by_visits": [
+        {
+          "move": 0,
+          "visits": 3,
+          "prior": 0.0275,
+          "q": -0.0013
+        },
+        {
+          "move": 2,
+          "visits": 2,
+          "prior": 0.0167,
+          "q": 0.0011
+        },
+        {
+          "move": 3,
+          "visits": 2,
+          "prior": 0.0176,
+          "q": 0.0011
+        },
+        {
+          "move": 40,
+          "visits": 2,
+          "prior": 0.0156,
+          "q": 0.0011
+        },
+        {
+          "move": 75,
+          "visits": 2,
+          "prior": 0.0176,
+          "q": 0.0011
+        }
+      ],
+      "mcts_time_sec": 5.619,
+      "invariants": [
+        {
+          "name": "sum(children.visits) == num_sims",
+          "passed": true,
+          "detail": "50 vs 50"
+        },
+        {
+          "name": "all priors >= 0",
+          "passed": true,
+          "detail": "min=0.0011"
+        },
+        {
+          "name": "sum(priors) ~= 1",
+          "passed": true,
+          "detail": "sum=1.0000"
+        },
+        {
+          "name": "no duplicate child moves",
+          "passed": true,
+          "detail": "117 children, 117 unique"
+        },
+        {
+          "name": "all child moves legal or pass",
+          "passed": true,
+          "detail": "illegal children: []"
+        }
+      ]
+    },
+    {
+      "move_num": 12,
+      "player": "black",
+      "move": 113,
+      "captured_count": 0,
+      "legal_count_before": 115,
+      "stones_on_board": 13,
+      "root_value_est": -0.0026,
+      "root_children_expanded": 116,
+      "top5_by_visits": [
+        {
+          "move": 0,
+          "visits": 3,
+          "prior": 0.0302,
+          "q": -0.0034
+        },
+        {
+          "move": 105,
+          "visits": 3,
+          "prior": 0.0261,
+          "q": -0.0034
+        },
+        {
+          "move": 16,
+          "visits": 2,
+          "prior": 0.0174,
+          "q": -0.001
+        },
+        {
+          "move": 32,
+          "visits": 2,
+          "prior": 0.0226,
+          "q": -0.001
+        },
+        {
+          "move": 33,
+          "visits": 2,
+          "prior": 0.0172,
+          "q": -0.001
+        }
+      ],
+      "mcts_time_sec": 5.488,
+      "invariants": [
+        {
+          "name": "sum(children.visits) == num_sims",
+          "passed": true,
+          "detail": "50 vs 50"
+        },
+        {
+          "name": "all priors >= 0",
+          "passed": true,
+          "detail": "min=0.0017"
+        },
+        {
+          "name": "sum(priors) ~= 1",
+          "passed": true,
+          "detail": "sum=1.0000"
+        },
+        {
+          "name": "no duplicate child moves",
+          "passed": true,
+          "detail": "116 children, 116 unique"
+        },
+        {
+          "name": "all child moves legal or pass",
+          "passed": true,
+          "detail": "illegal children: []"
+        }
+      ]
+    },
+    {
+      "move_num": 13,
+      "player": "white",
+      "move": 90,
+      "captured_count": 0,
+      "legal_count_before": 114,
+      "stones_on_board": 14,
+      "root_value_est": -0.0047,
+      "root_children_expanded": 115,
+      "top5_by_visits": [
+        {
+          "move": 90,
+          "visits": 4,
+          "prior": 0.0338,
+          "q": -0.0024
+        },
+        {
+          "move": 15,
+          "visits": 2,
+          "prior": 0.0216,
+          "q": 0.0011
+        },
+        {
+          "move": 20,
+          "visits": 2,
+          "prior": 0.0233,
+          "q": 0.0011
+        },
+        {
+          "move": 28,
+          "visits": 2,
+          "prior": 0.0155,
+          "q": 0.0011
+        },
+        {
+          "move": 59,
+          "visits": 2,
+          "prior": 0.0178,
+          "q": 0.0011
+        }
+      ],
+      "mcts_time_sec": 5.48,
+      "invariants": [
+        {
+          "name": "sum(children.visits) == num_sims",
+          "passed": true,
+          "detail": "50 vs 50"
+        },
+        {
+          "name": "all priors >= 0",
+          "passed": true,
+          "detail": "min=0.0013"
+        },
+        {
+          "name": "sum(priors) ~= 1",
+          "passed": true,
+          "detail": "sum=1.0000"
+        },
+        {
+          "name": "no duplicate child moves",
+          "passed": true,
+          "detail": "115 children, 115 unique"
+        },
+        {
+          "name": "all child moves legal or pass",
+          "passed": true,
+          "detail": "illegal children: []"
+        }
+      ]
+    },
+    {
+      "move_num": 14,
+      "player": "black",
+      "move": 102,
+      "captured_count": 0,
+      "legal_count_before": 113,
+      "stones_on_board": 15,
+      "root_value_est": -0.0037,
+      "root_children_expanded": 114,
+      "top5_by_visits": [
+        {
+          "move": 2,
+          "visits": 2,
+          "prior": 0.0193,
+          "q": -0.001
+        },
+        {
+          "move": 20,
+          "visits": 2,
+          "prior": 0.0228,
+          "q": -0.001
+        },
+        {
+          "move": 61,
+          "visits": 2,
+          "prior": 0.0182,
+          "q": -0.001
+        },
+        {
+          "move": 65,
+          "visits": 2,
+          "prior": 0.0154,
+          "q": -0.001
+        },
+        {
+          "move": 97,
+          "visits": 2,
+          "prior": 0.0208,
+          "q": -0.001
+        }
+      ],
+      "mcts_time_sec": 5.34,
+      "invariants": [
+        {
+          "name": "sum(children.visits) == num_sims",
+          "passed": true,
+          "detail": "50 vs 50"
+        },
+        {
+          "name": "all priors >= 0",
+          "passed": true,
+          "detail": "min=0.0066"
+        },
+        {
+          "name": "sum(priors) ~= 1",
+          "passed": true,
+          "detail": "sum=1.0000"
+        },
+        {
+          "name": "no duplicate child moves",
+          "passed": true,
+          "detail": "114 children, 114 unique"
+        },
+        {
+          "name": "all child moves legal or pass",
+          "passed": true,
+          "detail": "illegal children: []"
+        }
+      ]
+    },
+    {
+      "move_num": 15,
+      "player": "white",
+      "move": 86,
+      "captured_count": 0,
+      "legal_count_before": 112,
+      "stones_on_board": 16,
+      "root_value_est": -0.0052,
+      "root_children_expanded": 113,
+      "top5_by_visits": [
+        {
+          "move": 96,
+          "visits": 3,
+          "prior": 0.0278,
+          "q": -0.0013
+        },
+        {
+          "move": 124,
+          "visits": 3,
+          "prior": 0.0294,
+          "q": -0.0013
+        },
+        {
+          "move": 56,
+          "visits": 2,
+          "prior": 0.0206,
+          "q": 0.0011
+        },
+        {
+          "move": 76,
+          "visits": 2,
+          "prior": 0.0184,
+          "q": 0.001
+        },
+        {
+          "move": 92,
+          "visits": 2,
+          "prior": 0.022,
+          "q": 0.0011
+        }
+      ],
+      "mcts_time_sec": 5.643,
+      "invariants": [
+        {
+          "name": "sum(children.visits) == num_sims",
+          "passed": true,
+          "detail": "50 vs 50"
+        },
+        {
+          "name": "all priors >= 0",
+          "passed": true,
+          "detail": "min=0.0023"
+        },
+        {
+          "name": "sum(priors) ~= 1",
+          "passed": true,
+          "detail": "sum=1.0000"
+        },
+        {
+          "name": "no duplicate child moves",
+          "passed": true,
+          "detail": "113 children, 113 unique"
+        },
+        {
+          "name": "all child moves legal or pass",
+          "passed": true,
+          "detail": "illegal children: []"
+        }
+      ]
+    },
+    {
+      "move_num": 16,
+      "player": "black",
+      "move": 120,
+      "captured_count": 0,
+      "legal_count_before": 111,
+      "stones_on_board": 17,
+      "root_value_est": -0.0029,
+      "root_children_expanded": 112,
+      "top5_by_visits": [
+        {
+          "move": 23,
+          "visits": 2,
+          "prior": 0.0165,
+          "q": -0.001
+        },
+        {
+          "move": 40,
+          "visits": 2,
+          "prior": 0.0173,
+          "q": -0.001
+        },
+        {
+          "move": 43,
+          "visits": 2,
+          "prior": 0.0243,
+          "q": -0.001
+        },
+        {
+          "move": 47,
+          "visits": 2,
+          "prior": 0.0187,
+          "q": -0.001
+        },
+        {
+          "move": 49,
+          "visits": 2,
+          "prior": 0.0178,
+          "q": -0.001
+        }
+      ],
+      "mcts_time_sec": 5.35,
+      "invariants": [
+        {
+          "name": "sum(children.visits) == num_sims",
+          "passed": true,
+          "detail": "50 vs 50"
+        },
+        {
+          "name": "all priors >= 0",
+          "passed": true,
+          "detail": "min=0.0030"
+        },
+        {
+          "name": "sum(priors) ~= 1",
+          "passed": true,
+          "detail": "sum=1.0000"
+        },
+        {
+          "name": "no duplicate child moves",
+          "passed": true,
+          "detail": "112 children, 112 unique"
+        },
+        {
+          "name": "all child moves legal or pass",
+          "passed": true,
+          "detail": "illegal children: []"
+        }
+      ]
+    },
+    {
+      "move_num": 17,
+      "player": "white",
+      "move": 96,
+      "captured_count": 0,
+      "legal_count_before": 110,
+      "stones_on_board": 18,
+      "root_value_est": -0.006,
+      "root_children_expanded": 111,
+      "top5_by_visits": [
+        {
+          "move": 11,
+          "visits": 2,
+          "prior": 0.0197,
+          "q": 0.001
+        },
+        {
+          "move": 18,
+          "visits": 2,
+          "prior": 0.0181,
+          "q": 0.001
+        },
+        {
+          "move": 74,
+          "visits": 2,
+          "prior": 0.0212,
+          "q": 0.001
+        },
+        {
+          "move": 114,
+          "visits": 2,
+          "prior": 0.0165,
+          "q": 0.001
+        },
+        {
+          "move": 115,
+          "visits": 2,
+          "prior": 0.0175,
+          "q": 0.001
+        }
+      ],
+      "mcts_time_sec": 5.208,
+      "invariants": [
+        {
+          "name": "sum(children.visits) == num_sims",
+          "passed": true,
+          "detail": "50 vs 50"
+        },
+        {
+          "name": "all priors >= 0",
+          "passed": true,
+          "detail": "min=0.0011"
+        },
+        {
+          "name": "sum(priors) ~= 1",
+          "passed": true,
+          "detail": "sum=1.0000"
+        },
+        {
+          "name": "no duplicate child moves",
+          "passed": true,
+          "detail": "111 children, 111 unique"
+        },
+        {
+          "name": "all child moves legal or pass",
+          "passed": true,
+          "detail": "illegal children: []"
+        }
+      ]
+    },
+    {
+      "move_num": 18,
+      "player": "black",
+      "move": 40,
+      "captured_count": 0,
+      "legal_count_before": 109,
+      "stones_on_board": 19,
+      "root_value_est": -0.0023,
+      "root_children_expanded": 110,
+      "top5_by_visits": [
+        {
+          "move": 38,
+          "visits": 3,
+          "prior": 0.0274,
+          "q": -0.0034
+        },
+        {
+          "move": 99,
+          "visits": 3,
+          "prior": 0.0275,
+          "q": -0.0034
+        },
+        {
+          "move": 20,
+          "visits": 2,
+          "prior": 0.0234,
+          "q": -0.001
+        },
+        {
+          "move": 22,
+          "visits": 2,
+          "prior": 0.0223,
+          "q": -0.001
+        },
+        {
+          "move": 49,
+          "visits": 2,
+          "prior": 0.021,
+          "q": -0.001
+        }
+      ],
+      "mcts_time_sec": 5.57,
+      "invariants": [
+        {
+          "name": "sum(children.visits) == num_sims",
+          "passed": true,
+          "detail": "50 vs 50"
+        },
+        {
+          "name": "all priors >= 0",
+          "passed": true,
+          "detail": "min=0.0010"
+        },
+        {
+          "name": "sum(priors) ~= 1",
+          "passed": true,
+          "detail": "sum=1.0000"
+        },
+        {
+          "name": "no duplicate child moves",
+          "passed": true,
+          "detail": "110 children, 110 unique"
+        },
+        {
+          "name": "all child moves legal or pass",
+          "passed": true,
+          "detail": "illegal children: []"
+        }
+      ]
+    },
+    {
+      "move_num": 19,
+      "player": "white",
+      "move": 47,
+      "captured_count": 0,
+      "legal_count_before": 108,
+      "stones_on_board": 20,
+      "root_value_est": -0.0041,
+      "root_children_expanded": 109,
+      "top5_by_visits": [
+        {
+          "move": 46,
+          "visits": 3,
+          "prior": 0.0247,
+          "q": -0.0013
+        },
+        {
+          "move": 118,
+          "visits": 3,
+          "prior": 0.0262,
+          "q": -0.0013
+        },
+        {
+          "move": 3,
+          "visits": 2,
+          "prior": 0.0235,
+          "q": 0.0011
+        },
+        {
+          "move": 15,
+          "visits": 2,
+          "prior": 0.0182,
+          "q": 0.001
+        },
+        {
+          "move": 22,
+          "visits": 2,
+          "prior": 0.0175,
+          "q": 0.001
+        }
+      ],
+      "mcts_time_sec": 5.496,
+      "invariants": [
+        {
+          "name": "sum(children.visits) == num_sims",
+          "passed": true,
+          "detail": "50 vs 50"
+        },
+        {
+          "name": "all priors >= 0",
+          "passed": true,
+          "detail": "min=0.0068"
+        },
+        {
+          "name": "sum(priors) ~= 1",
+          "passed": true,
+          "detail": "sum=1.0000"
+        },
+        {
+          "name": "no duplicate child moves",
+          "passed": true,
+          "detail": "109 children, 109 unique"
+        },
+        {
+          "name": "all child moves legal or pass",
+          "passed": true,
+          "detail": "illegal children: []"
+        }
+      ]
+    },
+    {
+      "move_num": 20,
+      "player": "black",
+      "move": 68,
+      "captured_count": 0,
+      "legal_count_before": 107,
+      "stones_on_board": 21,
+      "root_value_est": -0.0029,
+      "root_children_expanded": 108,
+      "top5_by_visits": [
+        {
+          "move": 6,
+          "visits": 3,
+          "prior": 0.0266,
+          "q": -0.0033
+        },
+        {
+          "move": 23,
+          "visits": 3,
+          "prior": 0.0265,
+          "q": -0.0033
+        },
+        {
+          "move": 8,
+          "visits": 2,
+          "prior": 0.016,
+          "q": -0.001
+        },
+        {
+          "move": 25,
+          "visits": 2,
+          "prior": 0.018,
+          "q": -0.001
+        },
+        {
+          "move": 44,
+          "visits": 2,
+          "prior": 0.0179,
+          "q": -0.001
+        }
+      ],
+      "mcts_time_sec": 5.446,
+      "invariants": [
+        {
+          "name": "sum(children.visits) == num_sims",
+          "passed": true,
+          "detail": "50 vs 50"
+        },
+        {
+          "name": "all priors >= 0",
+          "passed": true,
+          "detail": "min=0.0026"
+        },
+        {
+          "name": "sum(priors) ~= 1",
+          "passed": true,
+          "detail": "sum=1.0000"
+        },
+        {
+          "name": "no duplicate child moves",
+          "passed": true,
+          "detail": "108 children, 108 unique"
+        },
+        {
+          "name": "all child moves legal or pass",
+          "passed": true,
+          "detail": "illegal children: []"
+        }
+      ]
+    },
+    {
+      "move_num": 21,
+      "player": "white",
+      "move": 16,
+      "captured_count": 0,
+      "legal_count_before": 106,
+      "stones_on_board": 22,
+      "root_value_est": -0.0049,
+      "root_children_expanded": 107,
+      "top5_by_visits": [
+        {
+          "move": 16,
+          "visits": 3,
+          "prior": 0.0283,
+          "q": -0.0013
+        },
+        {
+          "move": 65,
+          "visits": 3,
+          "prior": 0.0319,
+          "q": -0.0013
+        },
+        {
+          "move": 111,
+          "visits": 3,
+          "prior": 0.0285,
+          "q": -0.0013
+        },
+        {
+          "move": 48,
+          "visits": 2,
+          "prior": 0.0183,
+          "q": 0.001
+        },
+        {
+          "move": 89,
+          "visits": 2,
+          "prior": 0.0213,
+          "q": 0.001
+        }
+      ],
+      "mcts_time_sec": 5.555,
+      "invariants": [
+        {
+          "name": "sum(children.visits) == num_sims",
+          "passed": true,
+          "detail": "50 vs 50"
+        },
+        {
+          "name": "all priors >= 0",
+          "passed": true,
+          "detail": "min=0.0010"
+        },
+        {
+          "name": "sum(priors) ~= 1",
+          "passed": true,
+          "detail": "sum=1.0000"
+        },
+        {
+          "name": "no duplicate child moves",
+          "passed": true,
+          "detail": "107 children, 107 unique"
+        },
+        {
+          "name": "all child moves legal or pass",
+          "passed": true,
+          "detail": "illegal children: []"
+        }
+      ]
+    },
+    {
+      "move_num": 22,
+      "player": "black",
+      "move": 88,
+      "captured_count": 0,
+      "legal_count_before": 105,
+      "stones_on_board": 23,
+      "root_value_est": -0.0037,
+      "root_children_expanded": 106,
+      "top5_by_visits": [
+        {
+          "move": 39,
+          "visits": 2,
+          "prior": 0.016,
+          "q": -0.001
+        },
+        {
+          "move": 54,
+          "visits": 2,
+          "prior": 0.0226,
+          "q": -0.001
+        },
+        {
+          "move": 79,
+          "visits": 2,
+          "prior": 0.0203,
+          "q": -0.001
+        },
+        {
+          "move": 88,
+          "visits": 2,
+          "prior": 0.0177,
+          "q": -0.001
+        },
+        {
+          "move": 92,
+          "visits": 2,
+          "prior": 0.0167,
+          "q": -0.001
+        }
+      ],
+      "mcts_time_sec": 5.232,
+      "invariants": [
+        {
+          "name": "sum(children.visits) == num_sims",
+          "passed": true,
+          "detail": "50 vs 50"
+        },
+        {
+          "name": "all priors >= 0",
+          "passed": true,
+          "detail": "min=0.0071"
+        },
+        {
+          "name": "sum(priors) ~= 1",
+          "passed": true,
+          "detail": "sum=1.0000"
+        },
+        {
+          "name": "no duplicate child moves",
+          "passed": true,
+          "detail": "106 children, 106 unique"
+        },
+        {
+          "name": "all child moves legal or pass",
+          "passed": true,
+          "detail": "illegal children: []"
+        }
+      ]
+    },
+    {
+      "move_num": 23,
+      "player": "white",
+      "move": "pass",
+      "captured_count": 0,
+      "legal_count_before": 104,
+      "stones_on_board": 23,
+      "root_value_est": -0.0046,
+      "root_children_expanded": 105,
+      "top5_by_visits": [
+        {
+          "move": 98,
+          "visits": 4,
+          "prior": 0.0359,
+          "q": -0.0024
+        },
+        {
+          "move": 114,
+          "visits": 4,
+          "prior": 0.0418,
+          "q": -0.0024
+        },
+        {
+          "move": 30,
+          "visits": 3,
+          "prior": 0.0265,
+          "q": -0.0013
+        },
+        {
+          "move": 18,
+          "visits": 2,
+          "prior": 0.0165,
+          "q": 0.001
+        },
+        {
+          "move": 59,
+          "visits": 2,
+          "prior": 0.0187,
+          "q": 0.001
+        }
+      ],
+      "mcts_time_sec": 5.396,
+      "invariants": [
+        {
+          "name": "sum(children.visits) == num_sims",
+          "passed": true,
+          "detail": "50 vs 50"
+        },
+        {
+          "name": "all priors >= 0",
+          "passed": true,
+          "detail": "min=0.0059"
+        },
+        {
+          "name": "sum(priors) ~= 1",
+          "passed": true,
+          "detail": "sum=1.0000"
+        },
+        {
+          "name": "no duplicate child moves",
+          "passed": true,
+          "detail": "105 children, 105 unique"
+        },
+        {
+          "name": "all child moves legal or pass",
+          "passed": true,
+          "detail": "illegal children: []"
+        }
+      ]
+    },
+    {
+      "move_num": 24,
+      "player": "black",
+      "move": "pass",
+      "captured_count": 0,
+      "legal_count_before": 104,
+      "stones_on_board": 23,
+      "root_value_est": -1.0,
+      "root_children_expanded": 105,
+      "top5_by_visits": [
+        {
+          "move": "pass",
+          "visits": 50,
+          "prior": 0.0147,
+          "q": 1.0
+        },
+        {
+          "move": 0,
+          "visits": 0,
+          "prior": 0.0072,
+          "q": 0.0
+        },
+        {
+          "move": 1,
+          "visits": 0,
+          "prior": 0.0081,
+          "q": 0.0
+        },
+        {
+          "move": 2,
+          "visits": 0,
+          "prior": 0.0072,
+          "q": 0.0
+        },
+        {
+          "move": 3,
+          "visits": 0,
+          "prior": 0.0072,
+          "q": 0.0
+        }
+      ],
+      "mcts_time_sec": 0.1,
+      "invariants": [
+        {
+          "name": "sum(children.visits) == num_sims",
+          "passed": true,
+          "detail": "50 vs 50"
+        },
+        {
+          "name": "all priors >= 0",
+          "passed": true,
+          "detail": "min=0.0072"
+        },
+        {
+          "name": "sum(priors) ~= 1",
+          "passed": true,
+          "detail": "sum=1.0000"
+        },
+        {
+          "name": "no duplicate child moves",
+          "passed": true,
+          "detail": "105 children, 105 unique"
+        },
+        {
+          "name": "all child moves legal or pass",
+          "passed": true,
+          "detail": "illegal children: []"
+        }
+      ]
+    }
+  ],
+  "terminated_reason": "two_consecutive_passes",
+  "winner": "white",
+  "margin_white_minus_black": 6.5,
+  "total_moves": 25,
+  "total_time_sec": 136.58,
+  "avg_sec_per_move": 5.463,
+  "final_black_stones": 12,
+  "final_white_stones": 11,
+  "total_stones_captured": 0,
+  "approx_nn_evals": 1250
+}

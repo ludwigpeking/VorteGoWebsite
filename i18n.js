@@ -106,6 +106,7 @@
       'room.waiting2': "You'll receive the board automatically once they start.",
       'room.menu.random': 'Random Goban',
       'room.menu.preset': 'Preset Gobans',
+      'room.menu.starDomination': 'Star Domination',
       'room.menu.design': 'Design Your Own Goban',
       'room.menu.load': 'Load Goban',
       'room.menu.review': 'Review Game Records',
@@ -194,6 +195,10 @@
       // ---- Preset menu ----
       'preset.title': 'Choose a Preset Goban',
       'preset.back': 'Back to Room Menu',
+      'starDomination.title': 'Star Domination — Choose Sphere Size',
+      'starDomination.small': 'Small (~162 points)',
+      'starDomination.medium': 'Medium (~362 points)',
+      'starDomination.large': 'Large (~642 points)',
 
       // ---- Game review modal ----
       'review.title': 'Game Review – Inspection',
@@ -342,6 +347,7 @@
       'room.waiting2': '對局開始後棋盤將自動同步。',
       'room.menu.random': '隨機棋盤',
       'room.menu.preset': '預設棋盤',
+      'room.menu.starDomination': '星球制霸',
       'room.menu.design': '設計自己的棋盤',
       'room.menu.load': '載入棋盤',
       'room.menu.review': '觀看對局記錄',
@@ -426,6 +432,10 @@
 
       'preset.title': '選擇預設棋盤',
       'preset.back': '回到對局室選單',
+      'starDomination.title': '星球制霸 — 選擇球面大小',
+      'starDomination.small': '小 (約 162 個點)',
+      'starDomination.medium': '中 (約 362 個點)',
+      'starDomination.large': '大 (約 642 個點)',
 
       'review.title': '對局回顧 — 檢視',
       'review.close': '關閉',
@@ -569,6 +579,7 @@
       'room.waiting2': '開始されると碁盤が自動的に同期されます。',
       'room.menu.random': 'ランダム碁盤',
       'room.menu.preset': 'プリセット碁盤',
+      'room.menu.starDomination': '星球制覇',
       'room.menu.design': '碁盤を自作する',
       'room.menu.load': '碁盤を読み込む',
       'room.menu.review': '棋譜を見る',
@@ -653,6 +664,10 @@
 
       'preset.title': 'プリセット碁盤を選択',
       'preset.back': 'ルームメニューへ戻る',
+      'starDomination.title': '星球制覇 — 球面のサイズを選択',
+      'starDomination.small': '小 (約 162 点)',
+      'starDomination.medium': '中 (約 362 点)',
+      'starDomination.large': '大 (約 642 点)',
 
       'review.title': '棋譜検討 — 閲覧',
       'review.close': '閉じる',
@@ -796,6 +811,7 @@
       'room.waiting2': '시작되면 바둑판이 자동으로 동기화됩니다.',
       'room.menu.random': '무작위 바둑판',
       'room.menu.preset': '프리셋 바둑판',
+      'room.menu.starDomination': '행성 제패',
       'room.menu.design': '바둑판 직접 설계',
       'room.menu.load': '바둑판 불러오기',
       'room.menu.review': '기보 보기',
@@ -880,6 +896,10 @@
 
       'preset.title': '프리셋 바둑판 선택',
       'preset.back': '방 메뉴로 돌아가기',
+      'starDomination.title': '행성 제패 — 구면 크기 선택',
+      'starDomination.small': '소 (약 162점)',
+      'starDomination.medium': '중 (약 362점)',
+      'starDomination.large': '대 (약 642점)',
 
       'review.title': '기보 검토',
       'review.close': '닫기',

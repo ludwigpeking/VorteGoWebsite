@@ -7,6 +7,8 @@
   <script src="p5.js"></script>
   <link rel="stylesheet" href="styles.css" />
   <script src="i18n.js"></script>
+  <script src="https://unpkg.com/three@0.160.0/build/three.min.js"></script>
+  <script src="star_domination.js"></script>
 </head>
 <body>
   <div id="authCorner" class="auth-corner">
@@ -237,10 +239,12 @@
           <div id="ownerGameOptions">
             <div class="panel-buttons">
               <button class="panel-btn" id="menuPresetGoban" data-i18n="room.menu.preset">Preset Gobans</button>
+              <button class="panel-btn" id="menuStarDomination" data-i18n="room.menu.starDomination">Star Domination</button>
               <button class="panel-btn" id="menuRandomGoban" data-i18n="room.menu.random">Random Goban</button>
               <button class="panel-btn" id="menuDesignGoban" data-i18n="room.menu.design">Design Your Own Goban</button>
               <button class="panel-btn" id="menuLoadGoban" data-i18n="room.menu.load">Load Goban</button>
               <button class="panel-btn" id="menuGameReview" data-i18n="room.menu.review">Review Game Records</button>
+              <button class="panel-btn" id="menuTrainingDataReview">View Training Data (JSON)</button>
               <button class="panel-btn" id="menuSettings" data-i18n="room.menu.settings">Settings</button>
             </div>
           </div>
@@ -328,6 +332,10 @@
             <span id="gameLoadStatus" class="panel-status"></span>
           </div>
           <div id="gameStatusRow" style="display:none;" class="panel-alert"><span id="gameStatus"></span></div>
+          <div id="mctsInfoPanel" style="display:none; margin-top:8px; padding:10px; background:#151515; border:1px solid #2a4a6a; border-radius:4px; font-size:12px; font-family:'Consolas',monospace;">
+            <div style="color:#5a9fe0; font-weight:bold; margin-bottom:6px;">MCTS details for current move</div>
+            <div id="mctsInfoContent" style="color:#ccc; white-space:pre-wrap;"></div>
+          </div>
           <div id="deadStoneRow" style="display:none;" class="panel-info" style="color:#ff8800;">
             <span data-i18n="play.markDead">Click stones to mark dead.</span> <button id="finishMarkingBtn" class="panel-btn" data-i18n="play.finishMarking">Finish Marking</button>
             <div id="markingProgress" class="panel-status" style="margin-top:6px;"></div>
@@ -370,11 +378,29 @@
     <button id="backToMenuFromPreset" data-i18n="preset.back">Back to Room Menu</button>
   </div>
 
+  <div id="starDominationMenu" style="display: none;">
+    <h1 data-i18n="starDomination.title">Star Domination — Choose Sphere Size</h1>
+    <div class="preset-options">
+      <button class="preset-btn" data-sd-size="small" data-i18n="starDomination.small">Small (~162 points)</button>
+      <button class="preset-btn" data-sd-size="medium" data-i18n="starDomination.medium">Medium (~362 points)</button>
+      <button class="preset-btn" data-sd-size="large" data-i18n="starDomination.large">Large (~642 points)</button>
+    </div>
+    <button id="backToMenuFromSD" data-i18n="preset.back">Back to Room Menu</button>
+  </div>
+
   <div id="gameReviewModal" style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.7); z-index: 1000; overflow-y: auto; padding: 20px;">
     <div style="background: #2a2a2a; color: #e0e0e0; padding: 20px; border-radius: 8px; max-width: 1000px; margin: 20px auto; max-height: 90vh; overflow-y: auto;">
       <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
-        <h2 data-i18n="review.title">Game Review - Inspection</h2>
+        <h2 data-i18n="review.title">Training Data Review</h2>
         <button id="closeGameReviewBtn" style="padding: 8px 16px; cursor: pointer;" data-i18n="review.close">Close</button>
+      </div>
+
+      <div style="margin-bottom: 15px; padding: 12px; background: #1a1a1a; border-radius: 4px;">
+        <label for="trainingJsonFileInput" style="display: block; color: #aaa; margin-bottom: 6px; font-size: 13px;">
+          Load a training-data JSON (e.g. from <code>python_training/game_review/</code>):
+        </label>
+        <input type="file" id="trainingJsonFileInput" accept=".json" style="color: #e0e0e0;">
+        <span id="trainingJsonStatus" style="margin-left: 10px; color: #888; font-size: 12px;"></span>
       </div>
 
       <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px;">

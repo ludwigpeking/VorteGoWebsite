@@ -1,15 +1,17 @@
-// Game Review & Inspection Tool
-// Loads and displays recorded games move-by-move on the visual board
+// Training Data Review - local JSON viewer
+// Loads training-data JSONs produced by the Python pipeline
+// (random_games format or mcts_sanity_test format) and replays them on the board.
 
 let gameReviewData = null;
 let currentGameIndex = -1;
 let currentMoveIndex = -1;
 let isPlayingBack = false;
 let playbackSpeed = 800; // milliseconds per move
-let reviewGameRecord = null; // Store original game record for review
+let reviewGameRecord = null; // Normalized record of the currently-loaded game
 
 document.addEventListener('DOMContentLoaded', () => {
-  const loadGameReviewBtn = document.getElementById('loadGameReviewBtn');
+  const menuTrainingReviewBtn = document.getElementById('menuTrainingDataReview');
+  const trainingJsonFileInput = document.getElementById('trainingJsonFileInput');
   const closeGameReviewBtn = document.getElementById('closeGameReviewBtn');
   const reviewPlayBtn = document.getElementById('reviewPlayBtn');
   const reviewPauseBtn = document.getElementById('reviewPauseBtn');
@@ -20,8 +22,11 @@ document.addEventListener('DOMContentLoaded', () => {
   const moveSlider = document.getElementById('moveSlider');
   const speedSlider = document.getElementById('speedSlider');
 
-  if (loadGameReviewBtn) {
-    loadGameReviewBtn.addEventListener('click', openGameReviewModal);
+  if (menuTrainingReviewBtn) {
+    menuTrainingReviewBtn.addEventListener('click', openGameReviewModal);
+  }
+  if (trainingJsonFileInput) {
+    trainingJsonFileInput.addEventListener('change', handleTrainingJsonFile);
   }
   if (closeGameReviewBtn) {
     closeGameReviewBtn.addEventListener('click', closeGameReviewModal);
@@ -66,58 +71,103 @@ document.addEventListener('DOMContentLoaded', () => {
   }
 });
 
-async function openGameReviewModal() {
-  console.log('Opening game review modal...');
+function openGameReviewModal() {
   const modal = document.getElementById('gameReviewModal');
   modal.style.display = 'block';
-  
-  // Load game review data
-  try {
-    console.log('Fetching game_review/random_games.json...');
-    const response = await fetch('game_review/random_games.json');
-    if (!response.ok) {
-      throw new Error(`HTTP error! status: ${response.status}`);
-    }
-    gameReviewData = await response.json();
-    console.log('Loaded games:', gameReviewData.games ? gameReviewData.games.length : 0);
-    displayGameList();
-  } catch (error) {
-    console.error('Failed to load game review data:', error);
-    document.getElementById('gameReviewList').innerHTML = `<div style="color: #f00;">Error loading games: ${error.message}</div>`;
-  }
+  // Reset list / status — no auto-fetch; user must pick a local JSON file.
+  document.getElementById('gameReviewList').innerHTML =
+    '<div style="color: #888;">Pick a JSON file above to load games.</div>';
+  document.getElementById('gameReviewDetails').innerHTML =
+    '<div style="color: #888;">No game selected.</div>';
+  const status = document.getElementById('trainingJsonStatus');
+  if (status) status.textContent = '';
 }
 
 function closeGameReviewModal() {
-  console.log('Closing game review modal...');
   const modal = document.getElementById('gameReviewModal');
   modal.style.display = 'none';
   pausePlayback();
   currentGameIndex = -1;
   currentMoveIndex = -1;
   reviewGameRecord = null;
+  const panel = document.getElementById('mctsInfoPanel');
+  if (panel) panel.style.display = 'none';
 }
 
-async function openGameReviewModal() {
-  const modal = document.getElementById('gameReviewModal');
-  modal.style.display = 'block';
-  
-  // Load game review data
+async function handleTrainingJsonFile(evt) {
+  const file = evt.target.files && evt.target.files[0];
+  const status = document.getElementById('trainingJsonStatus');
+  if (!file) return;
+  status.textContent = `Reading ${file.name}...`;
+  let raw;
   try {
-    const response = await fetch('game_review/random_games.json');
-    gameReviewData = await response.json();
-    displayGameList();
-  } catch (error) {
-    console.error('Failed to load game review data:', error);
-    document.getElementById('gameReviewList').innerHTML = '<div style="color: #f00;">Error loading games</div>';
+    const text = await file.text();
+    raw = JSON.parse(text);
+  } catch (err) {
+    status.textContent = `Parse error: ${err.message}`;
+    status.style.color = '#f66';
+    document.getElementById('gameReviewList').innerHTML =
+      `<div style="color:#f66;">Failed to parse JSON: ${err.message}</div>`;
+    return;
   }
+  try {
+    gameReviewData = normalizeReviewData(raw);
+  } catch (err) {
+    status.textContent = `Format error: ${err.message}`;
+    status.style.color = '#f66';
+    return;
+  }
+  status.style.color = '#8c8';
+  status.textContent = `Loaded ${gameReviewData.games.length} game(s) from ${file.name}`;
+  displayGameList();
 }
 
-function closeGameReviewModal() {
-  const modal = document.getElementById('gameReviewModal');
-  modal.style.display = 'none';
-  pausePlayback();
-  currentGameIndex = -1;
-  currentMoveIndex = -1;
+// Normalize both JSON formats into: { games: [{ goban_name, moves: [...], winner, detailedMoves?, meta? }] }
+//  - Old format (random_games.json / selfplay batches):
+//      { games: [{ goban_name, moves: ["42","pass",...], winner, ... }] }
+//  - New format (mcts_sanity_test.py single-game):
+//      { goban: "Shumi.json", moves: [{move_num, player, move, top5_by_visits, ...}], winner, ... }
+function normalizeReviewData(raw) {
+  if (raw && Array.isArray(raw.games)) {
+    // Old format — already close enough; just ensure move strings.
+    return {
+      games: raw.games.map((g) => ({
+        goban_name: g.goban_name || (g.goban ? String(g.goban).replace(/\.json$/i, '') : 'Unknown'),
+        moves: (g.moves || []).map((m) => (typeof m === 'string' ? m : String(m))),
+        winner: g.winner || 'unknown',
+        total_moves: g.total_moves || (g.moves || []).length,
+        detailedMoves: null,
+        meta: { format: 'batch', ...g },
+      })),
+    };
+  }
+  if (raw && Array.isArray(raw.moves) && raw.moves.length && typeof raw.moves[0] === 'object') {
+    // New sanity-test format — detailed single game.
+    const gobanName = (raw.goban || 'Unknown').replace(/\.json$/i, '');
+    const movesStr = raw.moves.map((m) => (m.move === 'pass' ? 'pass' : String(m.move)));
+    return {
+      games: [
+        {
+          goban_name: gobanName,
+          moves: movesStr,
+          winner: raw.winner || 'unknown',
+          total_moves: raw.total_moves || movesStr.length,
+          detailedMoves: raw.moves, // keep the full detail array for the MCTS panel
+          meta: {
+            format: 'sanity',
+            sims_per_move: raw.sims_per_move,
+            device: raw.device,
+            total_time_sec: raw.total_time_sec,
+            avg_sec_per_move: raw.avg_sec_per_move,
+            margin_white_minus_black: raw.margin_white_minus_black,
+            terminated_reason: raw.terminated_reason,
+            num_vertices: raw.num_vertices,
+          },
+        },
+      ],
+    };
+  }
+  throw new Error('Unrecognized JSON shape (expected {games:[...]} or {moves:[{...}]})');
 }
 
 function displayGameList() {
@@ -169,35 +219,38 @@ function selectGame(gameIndex) {
     })
     .then(gobanData => {
       console.log('Goban data loaded, vertices:', gobanData.vertices ? gobanData.vertices.length : 'none');
-      
-      // Close the modal
+
+      // Close the modal.
       document.getElementById('gameReviewModal').style.display = 'none';
-      
-      // Load the goban using the existing restoreGoban function
-      restoreGoban(gobanData);
-      console.log('Goban restored');
-      
-      // Switch to play view
-      currentScreen = 'play';
-      document.getElementById('menu').style.display = 'none';
-      document.getElementById('uiPlay').style.display = 'block';
-      
-      // Clear any existing game state
-      gameStones.clear();
-      stoneOrder.clear();
-      currentPlayer = 'black';
-      capturedBlack = 0;
-      capturedWhite = 0;
-      gameEnded = false;
-      markingDeadStones = false;
-      deadStones.clear();
-      showStoneIndices = false;
-      
-      // Show review controls in the UI panel
+
+      // Use the blessed entry: applyGameSnapshot(). It handles canvas creation,
+      // DOM visibility (#app / #roomPlaceholder), mode='play', currentScreen='play',
+      // showPanelSection('play'), setupPlayButtons(), and the final redraw.
+      // We pass an empty-state game-record snapshot so no moves are auto-replayed —
+      // our goToMove() will drive the current-move state instead.
+      if (typeof window.applyGameSnapshot !== 'function') {
+        alert('applyGameSnapshot not available on this page — cannot enter review mode.');
+        return;
+      }
+      const emptyState = {
+        ...gobanData,
+        gameStones: [],
+        stoneOrder: [],
+        currentPlayer: 'black',
+        capturedBlack: 0,
+        capturedWhite: 0,
+        previousBoardState: null,
+        gameUndoStack: [],
+        gameUndoIndex: -1,
+      };
+      window.applyGameSnapshot({
+        type: 'game-record',
+        initialGoban: emptyState,
+        moves: [],
+      });
+      console.log('Snapshot applied — entering review mode');
+
       setupReviewControls();
-      
-      // Start at first move
-      console.log('Going to first move');
       goToMove(0);
     })
     .catch(error => {
@@ -212,14 +265,51 @@ function setupReviewControls() {
   if (gameTurnEl && reviewGameRecord) {
     gameTurnEl.innerHTML = `<span style="color: #ff8800;">REVIEW MODE</span><br>${reviewGameRecord.goban_name}`;
   }
-  
+
   // Update game status to show we're in review
   const gameStatusRow = document.getElementById('gameStatusRow');
   const gameStatus = document.getElementById('gameStatus');
   if (gameStatusRow && gameStatus && reviewGameRecord) {
     gameStatusRow.style.display = 'block';
-    gameStatus.innerHTML = `Reviewing: ${reviewGameRecord.total_moves} moves | Winner: ${reviewGameRecord.winner.toUpperCase()}`;
+    const meta = reviewGameRecord.meta || {};
+    let header = `Reviewing: ${reviewGameRecord.total_moves} moves | Winner: ${(reviewGameRecord.winner || 'unknown').toUpperCase()}`;
+    if (meta.format === 'sanity' && meta.sims_per_move) {
+      header += ` | ${meta.sims_per_move} sims/move on ${meta.device || '?'}`;
+    }
+    gameStatus.innerHTML = header;
   }
+
+  // MCTS panel: only visible when we actually have detailed per-move data
+  const panel = document.getElementById('mctsInfoPanel');
+  if (panel) {
+    panel.style.display = (reviewGameRecord && reviewGameRecord.detailedMoves) ? 'block' : 'none';
+  }
+}
+
+function renderMctsInfo(moveIndex) {
+  const panel = document.getElementById('mctsInfoPanel');
+  const content = document.getElementById('mctsInfoContent');
+  if (!panel || !content || !reviewGameRecord || !reviewGameRecord.detailedMoves) return;
+  const d = reviewGameRecord.detailedMoves[moveIndex];
+  if (!d) {
+    content.textContent = '(no data for this move)';
+    return;
+  }
+  const top5 = (d.top5_by_visits || []).map(
+    (r) => `  ${String(r.move).padStart(5)}  visits=${String(r.visits).padStart(3)}  prior=${Number(r.prior).toFixed(3)}  q=${Number(r.q).toFixed(3)}`
+  ).join('\n');
+  const inv = (d.invariants || []).map(
+    (i) => `  ${i.passed ? '✓' : '✗'} ${i.name} (${i.detail})`
+  ).join('\n');
+  const lines = [
+    `Move ${d.move_num}  ${d.player}  -> ${d.move}`,
+    `Root V=${d.root_value_est}  captures=${d.captured_count}  legal=${d.legal_count_before}  MCTS ${d.mcts_time_sec}s`,
+    `Children expanded: ${d.root_children_expanded}`,
+    `Top-5 by visits:`,
+    top5 || '  (none)',
+    inv ? `Invariants:\n${inv}` : '',
+  ].filter(Boolean);
+  content.textContent = lines.join('\n');
 }
 
 function displayGameDetails(gameIndex) {
@@ -280,58 +370,74 @@ function showGamePlayback() {
 
 function goToMove(moveIndex) {
   if (currentGameIndex < 0 || !reviewGameRecord) return;
-  
+
   const game = reviewGameRecord;
   moveIndex = Math.max(0, Math.min(moveIndex, game.moves.length - 1));
   currentMoveIndex = moveIndex;
 
-  // Reset board state
-  gameStones.clear();
-  stoneOrder.clear();
-  currentPlayer = 'black';
-  capturedBlack = 0;
-  capturedWhite = 0;
-  gameEnded = false;
-  lastMoveWasPass = false;
-  
-  // Replay moves up to moveIndex
-  let moveNum = 0;
+  // Reset game state for a fresh replay. We route each move through the game's
+  // own placeStone() / handlePass() so captures and Ko are applied correctly;
+  // otherwise the board shown here would show all stones ever placed, including
+  // ones that were actually captured.
+  if (typeof gameStones !== 'undefined' && gameStones.clear) gameStones.clear();
+  if (typeof stoneOrder !== 'undefined' && stoneOrder.clear) stoneOrder.clear();
+  if (typeof currentPlayer !== 'undefined') currentPlayer = 'black';
+  if (typeof capturedBlack !== 'undefined') capturedBlack = 0;
+  if (typeof capturedWhite !== 'undefined') capturedWhite = 0;
+  if (typeof previousBoardState !== 'undefined') previousBoardState = null;
+  if (typeof gameEnded !== 'undefined') gameEnded = false;
+  if (typeof lastMoveWasPass !== 'undefined') lastMoveWasPass = false;
+
   let passCount = 0;
+  let lastMoveStr = '';
   for (let i = 0; i <= moveIndex; i++) {
     const moveStr = game.moves[i];
+    lastMoveStr = moveStr;
     if (moveStr === 'pass') {
+      if (typeof handlePass === 'function') {
+        handlePass(true);
+      } else if (typeof currentPlayer !== 'undefined') {
+        currentPlayer = currentPlayer === 'black' ? 'white' : 'black';
+      }
       passCount++;
-      lastMoveWasPass = true;
     } else {
       const vertexId = parseInt(moveStr);
-      gameStones.set(vertexId, currentPlayer);
-      stoneOrder.set(vertexId, ++moveNum);
+      if (typeof placeStone === 'function') {
+        // placeStone uses currentPlayer and handles player alternation + captures.
+        placeStone(vertexId, { remote: true });
+      } else if (typeof gameStones !== 'undefined') {
+        // Fallback (should not happen on this page).
+        gameStones.set(vertexId, currentPlayer);
+        currentPlayer = currentPlayer === 'black' ? 'white' : 'black';
+      }
       passCount = 0;
-      lastMoveWasPass = false;
     }
-    
-    // Alternate players
-    currentPlayer = currentPlayer === 'black' ? 'white' : 'black';
   }
-  
-  // Check if game ended
-  if (passCount >= 2) {
-    gameEnded = true;
-  }
-  
-  // Update UI elements
-  const moveStr = game.moves[moveIndex];
+  if (passCount >= 2 && typeof gameEnded !== 'undefined') gameEnded = true;
+
+  // Update header UI
   const movePlayer = (moveIndex % 2) === 0 ? 'Black' : 'White';
-  document.getElementById('gameTurn').innerHTML = 
-    `<span style="color: #ff8800;">REVIEW</span><br>Move ${moveIndex + 1}/${game.moves.length}<br>${movePlayer}: ${moveStr}`;
-  document.getElementById('capBlack').textContent = capturedBlack;
-  document.getElementById('capWhite').textContent = capturedWhite;
-  
-  // Show game status
+  const gameTurnEl = document.getElementById('gameTurn');
+  if (gameTurnEl) {
+    gameTurnEl.innerHTML =
+      `<span style="color: #ff8800;">REVIEW</span><br>Move ${moveIndex + 1}/${game.moves.length}<br>${movePlayer}: ${lastMoveStr}`;
+  }
+  const capBlackEl = document.getElementById('capBlack');
+  const capWhiteEl = document.getElementById('capWhite');
+  if (capBlackEl && typeof capturedBlack !== 'undefined') capBlackEl.textContent = capturedBlack;
+  if (capWhiteEl && typeof capturedWhite !== 'undefined') capWhiteEl.textContent = capturedWhite;
+
+  // Bottom status line
   const gameStatus = document.getElementById('gameStatus');
   if (gameStatus) {
-    gameStatus.innerHTML = `${game.goban_name} | Winner: ${game.winner.toUpperCase()}`;
+    gameStatus.innerHTML = `${game.goban_name} | Winner: ${(game.winner || 'unknown').toUpperCase()}`;
   }
+
+  // If the loaded JSON has per-move MCTS details, refresh the panel.
+  renderMctsInfo(moveIndex);
+
+  // p5 sketch uses noLoop() — must trigger redraw manually after state changes.
+  if (typeof redraw === 'function') redraw();
 }
 
 function goToEnd() {

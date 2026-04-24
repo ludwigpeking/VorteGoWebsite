@@ -24,7 +24,9 @@ class HexBoard:
         
         self.vertices = data['vertices']
         self.edges = data.get('edges', [])  # May not exist in your format
-        
+        self.quads = data.get('quads', [])  # Game adjacency is derived from these
+        self.triangles = data.get('triangles', [])
+
         # Build topology
         self.num_vertices = len(self.vertices)
         self.vertex_neighbors = self._build_adjacency()
@@ -33,39 +35,66 @@ class HexBoard:
         # Game state
         self.stones = {}  # vid -> 'black' or 'white'
         self.current_player = 'black'
-        self.ko_point = None
         self.pass_count = 0
         self.move_history = []
         self.move_number = 0
+        # Ko: positional, single-step, mirroring sketch.js. After each stone
+        # placement we remember the board map from BEFORE that placement; the
+        # next placement is rejected if its resulting map equals this one.
+        self.previous_board_state: Optional[Dict[int, str]] = None
+        # Single-stone ko hint, exposed as an NN input feature. Set to the
+        # captured stone's vid when a move captures exactly one opponent stone.
+        # Not consulted for legality (full ko check uses previous_board_state).
+        self.ko_point: Optional[int] = None
         
     def _build_adjacency(self) -> Dict[int, Set[int]]:
-        """Build neighbor sets for each vertex using peers or edges"""
-        adj = {}
-        
-        for v in self.vertices:
-            vid = v['id']
-            if v.get('visible', True) is False:
+        """Build neighbor sets the way the web game does.
+
+        The JS game (common.js:rebuildEdgesFromFaces) derives adjacency from the
+        goban's `quads` and `triangles` — each face contributes cyclic edges between
+        its vertices. The top-level `peers` field on each vertex is NOT game
+        adjacency (confirmed: on Shumi 0/127 vertices match between peers and
+        quads-based neighbors). Using `peers` here desyncs Python rules from the
+        web engine and makes trained models learn a different game.
+        """
+        adj: Dict[int, Set[int]] = {v['id']: set() for v in self.vertices}
+
+        for q in self.quads:
+            verts = q['verts'] if isinstance(q, dict) else q
+            active = q.get('active', True) if isinstance(q, dict) else True
+            if not active:
                 continue
-            
-            neighbors = set()
-            
-            # Use 'peers' if available (your format)
-            if 'peers' in v:
-                neighbors = set(v['peers'])
-                neighbors.discard(vid)  # Remove self-reference
-            # Otherwise use edges
-            elif self.edges:
-                for edge in self.edges:
-                    if not edge.get('active', True):
-                        continue
-                    a, b = edge['a'], edge['b']
-                    if a == vid:
-                        neighbors.add(b)
-                    elif b == vid:
-                        neighbors.add(a)
-            
-            adj[vid] = neighbors
-        
+            n = len(verts)
+            for i in range(n):
+                a, b = verts[i], verts[(i + 1) % n]
+                adj[a].add(b)
+                adj[b].add(a)
+
+        for t in self.triangles:
+            verts = t['verts'] if isinstance(t, dict) else t
+            active = t.get('active', True) if isinstance(t, dict) else True
+            if not active:
+                continue
+            for i in range(3):
+                a, b = verts[i], verts[(i + 1) % 3]
+                adj[a].add(b)
+                adj[b].add(a)
+
+        # Fallback: if no faces were defined, fall back to top-level `edges`.
+        # (Old gobans that pre-date quads may rely on this.)
+        if not self.quads and not self.triangles and self.edges:
+            for edge in self.edges:
+                if not edge.get('active', True):
+                    continue
+                a, b = edge['a'], edge['b']
+                adj[a].add(b)
+                adj[b].add(a)
+
+        # Respect invisible vertices (exclude from adjacency map entirely)
+        for v in self.vertices:
+            if v.get('visible', True) is False:
+                adj.pop(v['id'], None)
+
         return adj
     
     def _build_edge_index(self) -> torch.Tensor:
@@ -87,14 +116,30 @@ class HexBoard:
         return torch.tensor(edges, dtype=torch.long).t().contiguous()
     
     def clone(self):
-        """Deep copy of board state"""
-        new_board = HexBoard(goban_data={'vertices': self.vertices, 'edges': self.edges})
+        """Fast clone: share immutable topology (vertices/quads/neighbors/edge_index),
+        copy only mutable game state. The goban structure never changes during a
+        game, so rebuilding adjacency in __init__ on every MCTS clone is pure
+        waste. Before this fix, each clone was O(quads) ≈ 108 ops × 6000+
+        clones/move on Shumi — dominant bottleneck."""
+        new_board = HexBoard.__new__(HexBoard)
+        # Share immutable topology by reference (never mutated during play).
+        new_board.vertices = self.vertices
+        new_board.edges = self.edges
+        new_board.quads = self.quads
+        new_board.triangles = self.triangles
+        new_board.num_vertices = self.num_vertices
+        new_board.vertex_neighbors = self.vertex_neighbors
+        new_board.edge_index = self.edge_index
+        # Copy mutable game state.
         new_board.stones = self.stones.copy()
         new_board.current_player = self.current_player
-        new_board.ko_point = self.ko_point
         new_board.pass_count = self.pass_count
         new_board.move_history = self.move_history.copy()
         new_board.move_number = self.move_number
+        new_board.previous_board_state = (
+            dict(self.previous_board_state) if self.previous_board_state is not None else None
+        )
+        new_board.ko_point = self.ko_point
         return new_board
     
     def get_valid_moves(self) -> List[int]:
@@ -105,63 +150,98 @@ class HexBoard:
                 moves.append(vid)
         return moves
     
-    def is_legal_move(self, vid: int) -> bool:
-        """Check if move is legal (not suicide, not ko)"""
+    def _group_and_liberties_in(self, stones: Dict[int, str], seed: int) -> Tuple[Set[int], int]:
+        """Return (group, num_liberties) for the group containing `seed` in the given
+        stones dict. Works on any stones map, not just self.stones, so we can use it
+        on simulated post-move states."""
+        if seed not in stones:
+            return set(), 0
+        color = stones[seed]
+        group: Set[int] = set()
+        liberties: Set[int] = set()
+        queue = [seed]
+        while queue:
+            v = queue.pop()
+            if v in group:
+                continue
+            group.add(v)
+            for nid in self.vertex_neighbors.get(v, ()):
+                if nid not in stones:
+                    liberties.add(nid)
+                elif stones[nid] == color and nid not in group:
+                    queue.append(nid)
+        return group, len(liberties)
+
+    def _simulate_move(self, vid: int) -> Optional[Tuple[Dict[int, str], List[int]]]:
+        """Simulate placing a stone at vid for the current player.
+
+        Mirrors sketch.js:placeStone (lines ~2275–2343):
+          1. Place the stone.
+          2. Remove opponent groups that have zero liberties after the placement.
+          3. Reject as SUICIDE if the placed stone's own group has zero liberties.
+          4. Reject as KO if the resulting board map equals previous_board_state.
+
+        Returns (new_stones_map, captured_vids) if legal, otherwise None.
+        """
         if vid in self.stones:
-            return False
-        
-        if self.ko_point == vid:
-            return False
-        
-        # Check suicide: must have liberty or capture opponent
-        has_liberty = False
-        would_capture = False
-        
-        for nid in self.vertex_neighbors[vid]:
-            if nid not in self.stones:
-                has_liberty = True
-            elif self.stones[nid] != self.current_player:
-                # Check if would capture opponent
-                if self._count_liberties(nid, exclude=vid) == 0:
-                    would_capture = True
-        
-        return has_liberty or would_capture
-    
+            return None
+
+        new_stones = dict(self.stones)
+        new_stones[vid] = self.current_player
+        opponent = 'white' if self.current_player == 'black' else 'black'
+
+        captured: List[int] = []
+        captured_set: Set[int] = set()
+        for nid in self.vertex_neighbors.get(vid, ()):
+            if new_stones.get(nid) == opponent and nid not in captured_set:
+                group, libs = self._group_and_liberties_in(new_stones, nid)
+                if libs == 0:
+                    captured.extend(group)
+                    captured_set.update(group)
+
+        for c in captured_set:
+            del new_stones[c]
+
+        # Suicide check — must be done AFTER captures (a move that kills opponents
+        # is not suicide even if its own neighbors were all enemies).
+        if vid in new_stones:
+            _, my_libs = self._group_and_liberties_in(new_stones, vid)
+            if my_libs == 0:
+                return None
+
+        # Ko check — positional, one-step memory (matches sketch.js boardStatesEqual).
+        if self.previous_board_state is not None and new_stones == self.previous_board_state:
+            return None
+
+        return new_stones, captured
+
+    def is_legal_move(self, vid: int) -> bool:
+        """Legal iff the full simulation (suicide + ko) passes."""
+        return self._simulate_move(vid) is not None
+
     def play_move(self, vid: int) -> bool:
-        """
-        Play a stone at vertex vid
-        Returns True if successful, False if illegal
-        """
+        """Play a move. Returns True on success, False if illegal."""
         if vid == -1:  # Pass
             self.pass_count += 1
             self.current_player = 'white' if self.current_player == 'black' else 'black'
             self.move_history.append((-1, None))
             self.move_number += 1
-            self.ko_point = None
+            # JS does NOT reset previous_board_state on pass — ko restrictions persist.
             return True
-        
-        if not self.is_legal_move(vid):
+
+        sim = self._simulate_move(vid)
+        if sim is None:
             return False
-        
-        self.pass_count = 0
-        self.stones[vid] = self.current_player
-        
-        # Check for captures
-        captured = []
-        opponent = 'white' if self.current_player == 'black' else 'black'
-        for nid in self.vertex_neighbors[vid]:
-            if self.stones.get(nid) == opponent:
-                if self._count_liberties(nid) == 0:
-                    captured_group = self._capture_group(nid)
-                    captured.extend(captured_group)
-        
-        # Ko detection: if exactly 1 stone captured, that's ko point
+
+        new_stones, captured = sim
+        board_before_this_move = dict(self.stones)
+        self.stones = new_stones
+        self.previous_board_state = board_before_this_move
         self.ko_point = captured[0] if len(captured) == 1 else None
-        
-        self.move_history.append((vid, captured))
+        self.move_history.append((vid, list(captured)))
         self.move_number += 1
-        self.current_player = opponent
-        
+        self.pass_count = 0
+        self.current_player = 'white' if self.current_player == 'black' else 'black'
         return True
     
     def _count_liberties(self, vid: int, exclude: Optional[int] = None) -> int:
@@ -292,15 +372,22 @@ class HexBoard:
             batch=torch.zeros(self.num_vertices, dtype=torch.long)
         )
     
+    def score(self, komi: float = 7.5) -> Tuple[str, float, Dict[int, int]]:
+        """Final area score using Benson pass-alive detection.
+
+        Returns (winner, margin, ownership_map) where:
+          - winner: 'black' | 'white' | 'draw'
+          - margin: non-negative |white_score - black_score|
+          - ownership_map: dict vid -> {+1 black, -1 white, 0 neutral}
+
+        This is the canonical end-of-game scoring used for both legacy
+        get_winner() and for training-target generation (ownership labels).
+        """
+        # Local import to avoid circular dependency at module load
+        from bensons_algorithm import score_board
+        return score_board(self.stones, self.vertex_neighbors, komi=komi)
+
     def get_winner(self) -> str:
-        """
-        Determine winner using proper territory calculation.
-        Uses Benson's Algorithm concepts for more accurate endgame evaluation.
-        
-        Returns 'black', 'white', or 'draw'
-        """
-        # Import here to avoid circular dependency
-        from bensons_algorithm import simple_territory_count
-        
-        winner, _ = simple_territory_count(self)
+        """Backwards-compatible alias — returns the winner string only."""
+        winner, _, _ = self.score()
         return winner

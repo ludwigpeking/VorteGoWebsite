@@ -16,7 +16,14 @@
       "Bash(node --check game_reviewer.js)",
       "Bash(node *)",
       "Bash(grep -E \"^\\\\.gitignore$\")",
-      "Bash(git log *)"
-    ]
+      "Bash(git log *)",
+      "Bash(jq .vertices | length *)",
+      "Bash(grep -E \"\\\\.cpp$|\\\\.h$\")",
+      "Bash(git -C /c/Users/qli/Desktop/IT/2602_VorteGoWebsite ls-files python_training/)",
+      "Bash(git -C /c/Users/qli/Desktop/IT/2602_VorteGoWebsite status --short python_training/)",
+      "Bash(python -c \"import sys, json; d=json.load\\(sys.stdin\\); print\\('keys:', list\\(d.keys\\(\\)\\)\\); print\\('first move:', d['moves'][0] if d.get\\('moves'\\) else 'none'\\); print\\('total_moves:', d.get\\('total_moves'\\)\\)\")",
+      "Bash(python *)"
+    ],
+    "defaultMode": "bypassPermissions"
   }
 }
