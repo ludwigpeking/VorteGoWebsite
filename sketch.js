@@ -809,7 +809,10 @@ function windowResized() {
 function refreshViewportUi() {
   const confirmBtn = document.getElementById('mobileConfirmBtn');
   if (confirmBtn) {
-    confirmBtn.style.display = (currentScreen === 'play' && windowWidth <= 600) ? 'block' : 'none';
+    // Use window.innerWidth (always fresh) rather than p5's windowWidth —
+    // the latter can be stale when p5's draw loop is paused (e.g. in 3D mode).
+    const narrow = (window.innerWidth <= 600);
+    confirmBtn.style.display = (currentScreen === 'play' && narrow) ? 'block' : 'none';
   }
 }
 
@@ -3935,6 +3938,7 @@ window.applyGameSnapshot = (data) => {
   showPanelSection('play');
   setupPlayButtons();
   updateGameUI();
+  refreshViewportUi();  // mobile confirm button for the receiver side
   redraw();
 };
 
