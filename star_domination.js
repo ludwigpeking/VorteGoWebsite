@@ -629,27 +629,40 @@
   function updateCamera() {
     const eye = eyePos();
 
-    // Panel offset: shift the sphere right so it's centred in the visible
-    // area to the right of the room panel. We move BOTH eye and lookAt by
-    // the same vector in camera-right space — pure translation, preserves
-    // orbit relative to the sphere.
+    // Build the camera's right + up basis (using world up = +Y).
     const fw = { x: -eye.x, y: -eye.y, z: -eye.z };
     const fm = Math.hypot(fw.x, fw.y, fw.z) || 1;
     fw.x /= fm; fw.y /= fm; fw.z /= fm;
-    // right = forward × up, up = (0, 1, 0)
-    let rx = fw.y * 0 - fw.z * 1;
-    let ry = fw.z * 0 - fw.x * 0;
-    let rz = fw.x * 1 - fw.y * 0;
+    // right = forward × (0, 1, 0)
+    let rx = -fw.z, ry = 0, rz = fw.x;
     const rm = Math.hypot(rx, ry, rz) || 1;
     rx /= rm; ry /= rm; rz /= rm;
+    // up = right × forward
+    const ux = ry * fw.z - rz * fw.y;
+    const uy = rz * fw.x - rx * fw.z;
+    const uz = rx * fw.y - ry * fw.x;
 
-    const offsetPx = panelFootprintPx() / 2;
-    let shift = 0;
-    if (offsetPx > 0) {
-      const tanHalf = Math.tan(Math.PI / 6);
-      shift = -offsetPx * 2 * SD.camDist * tanHalf / window.innerHeight;
-    }
-    const sx = rx * shift, sy = ry * shift, sz = rz * shift;
+    const tanHalf = Math.tan(Math.PI / 6);
+    const worldPerPx = 2 * SD.camDist * tanHalf / window.innerHeight;
+
+    // Panel offset — shifts the sphere away from whichever side of the
+    // screen the panel covers, so it's centred in the visible area.
+    //   Desktop: panel is on the LEFT, width up to ~320px → shift RIGHT.
+    //   Mobile : panel is at the BOTTOM, 30vh tall        → shift UP.
+    const isMobile = window.innerWidth <= 600;
+    const xOffsetPx = isMobile ? 0 : panelFootprintPx() / 2;
+    const yOffsetPx = isMobile ? (window.innerHeight * 0.3) / 2 : 0;
+
+    // To make the sphere appear offset in some +direction on screen, the
+    // camera needs to translate in the opposite direction (so origin lies
+    // off-axis). Negative scalars → camera shifts opposite of the intended
+    // sphere-shift.
+    const xShift = -xOffsetPx * worldPerPx; // sphere shift RIGHT
+    const yShift = -yOffsetPx * worldPerPx; // sphere shift UP (camera down)
+
+    const sx = rx * xShift + ux * yShift;
+    const sy = ry * xShift + uy * yShift;
+    const sz = rz * xShift + uz * yShift;
 
     SD.camera.position.set(eye.x + sx, eye.y + sy, eye.z + sz);
     SD.camera.lookAt(sx, sy, sz);
@@ -945,6 +958,21 @@
   // ==============================================================
   // Lifecycle
   // ==============================================================
+
+  // Multiplayer re-entry: the opponent's client receives the goban via
+  // applyGameSnapshot, which writes pos3 onto the game's vertex array.
+  // This hook pulls that pos3 data into the module-private mesh buffers
+  // so the three.js pipeline can render it without regenerating.
+  SD.useMeshFromGameState = function () {
+    const V = (typeof window.__sdGetVertices === 'function')
+      ? window.__sdGetVertices() : [];
+    const Q = (typeof window.__sdGetQuads === 'function')
+      ? window.__sdGetQuads() : [];
+    _meshVerts = V.map((v) => (v && v.pos3)
+      ? { x: v.pos3.x, y: v.pos3.y, z: v.pos3.z }
+      : { x: 1, y: 0, z: 0 });
+    _meshQuads = Q.filter((q) => q.active).map((q) => ({ verts: q.verts.slice() }));
+  };
 
   SD.activate = function () {
     if (!initThreeScene()) return;

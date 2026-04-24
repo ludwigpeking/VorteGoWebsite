@@ -433,6 +433,13 @@ function applyOwnerUI(isOwner) {
 }
 
 function onRoomLeft() {
+  // If we were in the 3D spheric-goban mode, tear its canvas down before
+  // navigating back to the lobby — otherwise the globe stays visible on top
+  // of the lobby screen.
+  if (window.StarDomination && window.StarDomination.active) {
+    window.StarDomination.stop();
+    if (typeof window.ensureCanvas === 'function') window.ensureCanvas();
+  }
   multiplayerState.roomId = null;
   multiplayerState.roomName = null;
   multiplayerState.role = 'spectator';

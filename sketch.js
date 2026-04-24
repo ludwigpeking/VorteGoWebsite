@@ -144,6 +144,8 @@ function setup() {
     hoverVertex = vid;
     return tryPlaceAtHover();
   };
+  // Exposed for multiplayer.js so leaving the room can reset the canvas.
+  window.ensureCanvas = ensureCanvas;
 }
 
 function setupMenuListeners() {
@@ -3033,6 +3035,8 @@ function restoreGoban(data) {
       quads: new Set(),
       peers: v.peers ?? [v.id, v.id, v.id],
       visible: true,
+      // Preserve 3D position if this is a Star-Domination (spheric) goban.
+      pos3: v.pos3 ? { x: v.pos3.x, y: v.pos3.y, z: v.pos3.z } : undefined,
     });
   });
 
@@ -3832,6 +3836,9 @@ window.getGameSnapshot = () => ({
   timestamp: new Date().toISOString(),
   hexRadius,
   spacing,
+  // is3D = true when this is a spheric (Star Domination) goban. Tells the
+  // receiving client to spin up three.js instead of the 2D canvas.
+  is3D: !!(window.StarDomination && window.StarDomination.active),
   vertices: vertices.map((v) => ({
     id: v.id,
     x: v.x,
@@ -3840,6 +3847,9 @@ window.getGameSnapshot = () => ({
     q: v.q ?? 0,
     r: v.r ?? 0,
     peers: v.peers ?? [v.id, v.id, v.id],
+    // pos3 is only present on 3D gobans; preserve it so the receiver can
+    // rebuild the sphere in the right shape.
+    pos3: v.pos3 ? { x: v.pos3.x, y: v.pos3.y, z: v.pos3.z } : undefined,
   })),
   quads: quads.filter((q) => q.active).map((q) => ({ verts: [...q.verts] })),
   gameStones: Array.from(gameStones.entries()),
@@ -3861,6 +3871,16 @@ window.getGameSnapshot = () => ({
 });
 
 window.applyGameSnapshot = (data) => {
+  // Detect 3D (Star Domination) snapshot — explicit flag or presence of
+  // pos3 on any vertex. Tears down any running 3D scene first so we can
+  // rebuild from scratch.
+  const is3D = !!(data && (data.is3D || (Array.isArray(data.vertices) &&
+    data.vertices.some((v) => v && v.pos3))));
+
+  if (window.StarDomination && window.StarDomination.active && !is3D) {
+    window.StarDomination.stop();
+  }
+
   if (!canvasCreated) ensureCanvas();
   document.getElementById('app').style.display = 'block';
   const placeholder = document.getElementById('roomPlaceholder');
@@ -3899,7 +3919,15 @@ window.applyGameSnapshot = (data) => {
 
   // Legacy snapshot format — full board state in one blob.
   restoreGoban(data);
-  centerAndFitGoban();
+  if (is3D && window.StarDomination) {
+    // 3D goban: activate the three.js canvas, ingest mesh data from the
+    // pos3 fields restoreGoban already copied into vertices[].
+    window.StarDomination.useMeshFromGameState();
+    window.StarDomination.activate();
+    ensureCanvas(); // hides the p5 canvas while 3D is active
+  } else {
+    centerAndFitGoban();
+  }
   restoreGameFromData(data);
   mode = 'play';
   currentScreen = 'play';
