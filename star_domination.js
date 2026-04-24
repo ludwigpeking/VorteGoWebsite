@@ -368,10 +368,57 @@
     return Math.min(window.innerWidth, rect.right);
   }
 
+  // Visible diagnostic banner — appears on-screen when 3D activation fails
+  // or reports surprising state. Invaluable for mobile debugging where you
+  // can't easily hit DevTools.
+  function showDiagnostic(msg, isError) {
+    let el = document.getElementById('sdDiag');
+    if (!el) {
+      el = document.createElement('div');
+      el.id = 'sdDiag';
+      el.style.cssText =
+        'position:fixed; top:10px; left:50%; transform:translateX(-50%); ' +
+        'z-index:9999; max-width:90vw; padding:10px 14px; ' +
+        'background:rgba(0,0,0,0.85); color:#ffe; font:12px/1.4 monospace; ' +
+        'border-radius:8px; white-space:pre-wrap; pointer-events:auto; ' +
+        'border:1px solid rgba(255,255,255,0.2);';
+      el.addEventListener('click', () => el.remove());
+      document.body.appendChild(el);
+    }
+    el.style.borderColor = isError ? '#f55' : 'rgba(255,255,255,0.2)';
+    el.style.color = isError ? '#fee' : '#ffe';
+    el.textContent = msg;
+  }
+
   function initThreeScene() {
     if (SD.sceneReady) return true;
     if (typeof THREE === 'undefined') {
+      showDiagnostic(
+        'StarDomination: three.js failed to load.\n' +
+        'Check that three.min.js is present in the site root and that the\n' +
+        'browser isn\'t blocking it (service worker, privacy mode, etc).',
+        true
+      );
       console.error('[StarDomination] three.js not loaded');
+      return false;
+    }
+    // Sanity-check WebGL support before creating a renderer — iOS/older
+    // Android browsers sometimes have WebGL disabled or throw during
+    // context creation.
+    try {
+      const probe = document.createElement('canvas');
+      const gl = probe.getContext('webgl2') || probe.getContext('webgl') || probe.getContext('experimental-webgl');
+      if (!gl) {
+        showDiagnostic(
+          'StarDomination: WebGL unavailable in this browser.\n' +
+          'The 3D goban requires WebGL. Try a different browser or enable\n' +
+          'hardware acceleration in your current one.',
+          true
+        );
+        return false;
+      }
+    } catch (err) {
+      showDiagnostic('StarDomination: WebGL probe threw: ' + err.message, true);
       return false;
     }
 
@@ -386,15 +433,28 @@
       'z-index:2; display:none; touch-action:none; background:transparent;';
     document.body.appendChild(SD.canvas);
 
-    SD.renderer = new THREE.WebGLRenderer({
-      canvas: SD.canvas,
-      antialias: true,
-      alpha: false,
-    });
-    SD.renderer.setPixelRatio(window.devicePixelRatio || 1);
-    // Note: updateStyle=true (default) so the canvas element's CSS
-    // width/height get set in pixels — avoids mobile vh quirks.
-    SD.renderer.setSize(window.innerWidth, window.innerHeight);
+    try {
+      SD.renderer = new THREE.WebGLRenderer({
+        canvas: SD.canvas,
+        antialias: true,
+        alpha: false,
+      });
+    } catch (err) {
+      showDiagnostic(
+        'StarDomination: WebGLRenderer construction failed.\n' + err.message,
+        true
+      );
+      return false;
+    }
+    // Cap pixel ratio at 2 — some mobile devices report DPR of 3 or more,
+    // which creates backing buffers large enough to crash low-end GPUs.
+    const dpr = Math.min(window.devicePixelRatio || 1, 2);
+    SD.renderer.setPixelRatio(dpr);
+    // updateStyle=true (default) so the canvas element's CSS width/height
+    // get set in pixels — avoids mobile vh quirks.
+    const iw = Math.max(1, window.innerWidth);
+    const ih = Math.max(1, window.innerHeight);
+    SD.renderer.setSize(iw, ih);
     // three.js r155+ defaults to linear color space which makes scenes
     // look dark and flat. Output to sRGB so our colours/textures display
     // as expected.
@@ -416,7 +476,7 @@
     });
 
     SD.camera = new THREE.PerspectiveCamera(
-      60, window.innerWidth / window.innerHeight, 1, 10000
+      60, iw / ih, 1, 10000
     );
 
     // Lights — strong so the globe has obvious shading and the wood grain
@@ -900,6 +960,29 @@
     SD.camera.aspect = window.innerWidth / window.innerHeight;
     SD.camera.updateProjectionMatrix();
     if (SD.rafId) cancelAnimationFrame(SD.rafId);
+
+    // Self-check diagnostic — auto-hides after 3s. Exposes the likely
+    // failure modes (zero-size canvas, WebGL context loss, mesh missing)
+    // so a mobile user can at least see WHAT'S wrong when the globe
+    // doesn't appear.
+    const rect = SD.canvas.getBoundingClientRect();
+    const glOk = !!(SD.renderer && SD.renderer.getContext && SD.renderer.getContext());
+    const diag =
+      'SD active=' + SD.active +
+      '\ncanvas=' + Math.round(rect.width) + 'x' + Math.round(rect.height) +
+      ' at (' + Math.round(rect.left) + ',' + Math.round(rect.top) + ')' +
+      '\nvp=' + window.innerWidth + 'x' + window.innerHeight +
+      ' dpr=' + (window.devicePixelRatio || 1).toFixed(2) +
+      '\nwebgl=' + (glOk ? 'ok' : 'FAILED') +
+      '\nverts=' + (_meshVerts ? _meshVerts.length : 0) +
+      ' quads=' + (_meshQuads ? _meshQuads.length : 0) +
+      '\n(tap to dismiss)';
+    showDiagnostic(diag, !glOk);
+    setTimeout(() => {
+      const el = document.getElementById('sdDiag');
+      if (el) el.remove();
+    }, 4500);
+
     animate();
   };
 
