@@ -474,18 +474,36 @@
     if ('colorSpace' in woodTex && THREE.SRGBColorSpace) {
       woodTex.colorSpace = THREE.SRGBColorSpace;
     }
-    const globeGeom = new THREE.SphereGeometry(SD.R * 0.985, 64, 32);
+    // Globe at full R; arc-projected edges live just outside (ARC_R below)
+    // so there's no visible gap between the wood surface and the grid lines.
+    const globeGeom = new THREE.SphereGeometry(SD.R, 64, 32);
     const globeMat = new THREE.MeshPhongMaterial({
       map: woodTex, shininess: 8, specular: 0x3a3228,
     });
     SD.globeMesh = new THREE.Mesh(globeGeom, globeMat);
     SD.scene.add(SD.globeMesh);
 
-    // Wireframe from quad edges (each undirected edge once)
+    // Wireframe: each edge is subdivided into many short segments, each of
+    // which has its endpoints projected back onto the unit sphere. The
+    // result closely approximates a great-circle arc, so edges visually wrap
+    // the sphere surface instead of cutting through it as straight chords.
+    // At N=14 subsegments the arc is indistinguishable from a true geodesic
+    // at any sensible zoom level, while rendering as a single LineSegments.
     const V = _meshVerts, Q = _meshQuads;
+    const N_ARC = 14;
+    // Tiny positive offset above the globe surface so line pixels beat the
+    // globe in the depth test without z-fighting. 0.1% of R is ~0.25 units
+    // on a 250-unit radius — subpixel on screen.
+    const ARC_R = SD.R * 1.001;
     const positions = [];
     const drawn = new Set();
     let sumLen = 0, nEdges = 0;
+
+    const projectOnto = (x, y, z) => {
+      const m = Math.hypot(x, y, z) || 1;
+      return { x: (x / m) * ARC_R, y: (y / m) * ARC_R, z: (z / m) * ARC_R };
+    };
+
     for (const q of Q) {
       for (let k = 0; k < 4; k++) {
         const a = q.verts[k], b = q.verts[(k + 1) % 4];
@@ -493,10 +511,23 @@
         if (drawn.has(key)) continue;
         drawn.add(key);
         const pa = V[a], pb = V[b];
-        const ax = pa.x * SD.R, ay = pa.y * SD.R, az = pa.z * SD.R;
-        const bx = pb.x * SD.R, by = pb.y * SD.R, bz = pb.z * SD.R;
-        positions.push(ax, ay, az, bx, by, bz);
-        const dx = ax - bx, dy = ay - by, dz = az - bz;
+        // Sample N_ARC+1 points along the great-circle arc. Lerp in 3D and
+        // normalise — gives a slight non-uniform parameterisation along the
+        // arc, but visually identical to slerp at this subdivision count.
+        let prev = projectOnto(pa.x, pa.y, pa.z);
+        const firstPt = prev;
+        for (let i = 1; i <= N_ARC; i++) {
+          const t = i / N_ARC;
+          const lx = pa.x * (1 - t) + pb.x * t;
+          const ly = pa.y * (1 - t) + pb.y * t;
+          const lz = pa.z * (1 - t) + pb.z * t;
+          const p = projectOnto(lx, ly, lz);
+          positions.push(prev.x, prev.y, prev.z, p.x, p.y, p.z);
+          prev = p;
+        }
+        // For the stone-size heuristic we still want the straight chord
+        // length between the two original endpoints.
+        const dx = firstPt.x - prev.x, dy = firstPt.y - prev.y, dz = firstPt.z - prev.z;
         sumLen += Math.sqrt(dx * dx + dy * dy + dz * dz);
         nEdges++;
       }
@@ -505,7 +536,7 @@
     const wireGeom = new THREE.BufferGeometry();
     wireGeom.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
     const wireMat = new THREE.LineBasicMaterial({
-      color: 0x241a0e, transparent: true, opacity: 0.92,
+      color: 0x241a0e, transparent: true, opacity: 0.95,
     });
     SD.wireframeMesh = new THREE.LineSegments(wireGeom, wireMat);
     SD.scene.add(SD.wireframeMesh);
