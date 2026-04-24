@@ -1034,6 +1034,20 @@
     _meshQuads = Q.filter((q) => q.active).map((q) => ({ verts: q.verts.slice() }));
   };
 
+  // Move the mobile Place-Stone button out of #roomPanel (where it sits in
+  // the HTML) and into <body> so it's in the root stacking context. Inside
+  // the panel, its z-index is bounded by the panel's z-index (20), which
+  // can make it render below the three.js canvas under some stacking-context
+  // quirks. As a direct child of body, its z-index is absolute.
+  function ensureConfirmButtonOnBody() {
+    const btn = document.getElementById('mobileConfirmBtn');
+    if (!btn) return null;
+    if (btn.parentElement !== document.body) {
+      document.body.appendChild(btn);
+    }
+    return btn;
+  }
+
   SD.activate = function () {
     if (!initThreeScene()) return;
     buildSphereObjects();
@@ -1043,6 +1057,38 @@
     SD.camPitch = 0.35;
     SD.camDist = camDistBounds().base;
     SD.opponentEye = null;
+    ensureConfirmButtonOnBody();
+    // Defensive: force the confirm button to show on mobile 3D no matter
+    // what path (host start vs guest applyGameSnapshot) brought us here.
+    if (window.innerWidth <= 600) {
+      const btn = document.getElementById('mobileConfirmBtn');
+      if (btn) {
+        btn.style.display = 'block';
+        // On-screen diagnostic so we can see the button state without
+        // DevTools. Reports: viewport width, computed display, parent
+        // element, computed bottom position, and the element's bounding
+        // box. Auto-dismiss after 6 seconds.
+        setTimeout(() => {
+          const b = document.getElementById('mobileConfirmBtn');
+          if (!b) { showDiagnostic('mobileConfirmBtn: element MISSING from DOM', true); return; }
+          const cs = getComputedStyle(b);
+          const rect = b.getBoundingClientRect();
+          showDiagnostic(
+            'vw=' + window.innerWidth +
+            '\nparent=' + (b.parentElement ? b.parentElement.tagName + '#' + (b.parentElement.id || '') : 'none') +
+            '\ndisplay=' + cs.display +
+            '\nposition=' + cs.position +
+            '\nbottom=' + cs.bottom +
+            '\nz-index=' + cs.zIndex +
+            '\nrect=' + Math.round(rect.width) + 'x' + Math.round(rect.height) +
+            ' at (' + Math.round(rect.left) + ',' + Math.round(rect.top) + ')' +
+            '\n(tap to dismiss)',
+            false
+          );
+          setTimeout(() => { const el = document.getElementById('sdDiag'); if (el) el.remove(); }, 6000);
+        }, 200); // tiny delay so the current frame's layout settles
+      }
+    }
     SD.canvas.style.display = 'block';
     // Make sure size is fresh in case of a resize while hidden.
     SD.renderer.setSize(window.innerWidth, window.innerHeight);
