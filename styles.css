@@ -1062,19 +1062,27 @@ canvas {
 
   /* Place-stone button floats over the canvas, just above the bottom panel
      (which is 30vh tall), so it's always visible during play — more
-     discoverable than being buried in the panel menu. */
-  .mobile-confirm-btn {
+     discoverable than being buried in the panel menu.
+     NOTE: .primary-btn has transform: translateY(-1px) on :hover which was
+     overriding our translateX(-50%), causing the button to slide on tap
+     and making the tap-target miss its rendered position. We force the
+     transform + disable the transition on mobile to kill that. */
+  .mobile-confirm-btn,
+  .mobile-confirm-btn:hover,
+  .mobile-confirm-btn:active,
+  .mobile-confirm-btn:focus {
     position: fixed !important;
     bottom: calc(30vh + 12px);
     left: 50%;
-    transform: translateX(-50%);
+    transform: translateX(-50%) !important;
+    transition: none !important;
     width: auto;
     min-width: 160px;
     padding: 14px 28px;
     font-size: 15px;
     font-weight: 700;
     margin: 0;
-    z-index: 25;
+    z-index: 1000;
     border-radius: 999px;
     box-shadow: 0 6px 20px rgba(0, 0, 0, 0.45),
                 0 3px 12px rgba(242, 183, 5, 0.5);
