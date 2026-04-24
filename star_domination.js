@@ -377,9 +377,12 @@
 
     SD.canvas = document.createElement('canvas');
     SD.canvas.id = 'sdCanvas';
-    // Fullscreen, on top of p5's 2D canvas area.
+    // Positioning + stacking; DO NOT set width/height in vw/vh here — mobile
+    // browsers change the effective viewport when the URL bar hides/shows,
+    // which makes vh unreliable. We let three.js write explicit pixel sizes
+    // below (setSize with updateStyle=true, the default).
     SD.canvas.style.cssText =
-      'position:fixed; top:0; left:0; width:100vw; height:100vh; ' +
+      'position:fixed; top:0; left:0; ' +
       'z-index:2; display:none; touch-action:none; background:transparent;';
     document.body.appendChild(SD.canvas);
 
@@ -389,7 +392,9 @@
       alpha: false,
     });
     SD.renderer.setPixelRatio(window.devicePixelRatio || 1);
-    SD.renderer.setSize(window.innerWidth, window.innerHeight, false);
+    // Note: updateStyle=true (default) so the canvas element's CSS
+    // width/height get set in pixels — avoids mobile vh quirks.
+    SD.renderer.setSize(window.innerWidth, window.innerHeight);
     // three.js r155+ defaults to linear color space which makes scenes
     // look dark and flat. Output to sRGB so our colours/textures display
     // as expected.
@@ -431,7 +436,14 @@
     window.addEventListener('mouseup', onMouseUp);
     SD.canvas.addEventListener('wheel', onWheel, { passive: false });
     SD.canvas.addEventListener('dblclick', onDoubleClick);
+    // Touch — mirrors mouse for orbit; double-tap triggers placement.
+    SD.canvas.addEventListener('touchstart', onTouchStart, { passive: false });
+    SD.canvas.addEventListener('touchmove', onTouchMove, { passive: false });
+    SD.canvas.addEventListener('touchend', onTouchEnd, { passive: false });
     window.addEventListener('resize', onResize);
+    // Mobile browsers fire orientation/resize events at slightly different
+    // times when the URL bar hides/shows — listen to both to stay sized.
+    window.addEventListener('orientationchange', onResize);
 
     SD.sceneReady = true;
     return true;
@@ -745,9 +757,103 @@
 
   function onResize() {
     if (!SD.sceneReady || !SD.active) return;
-    SD.renderer.setSize(window.innerWidth, window.innerHeight, false);
+    // updateStyle=true (default) keeps the canvas element's CSS width/height
+    // in sync so mobile vh quirks don't leave it sized wrong.
+    SD.renderer.setSize(window.innerWidth, window.innerHeight);
     SD.camera.aspect = window.innerWidth / window.innerHeight;
     SD.camera.updateProjectionMatrix();
+  }
+
+  // ---- Touch handlers ----
+  // Tap vs. drag disambiguation for 3D mode:
+  //   Single touch, no significant movement, released → TAP: pick the vertex
+  //     under the finger and set it as hoverVertex. The floating mobile
+  //     "Place Stone" button then confirms placement.
+  //   Single touch that moves more than a threshold → DRAG: orbit the camera.
+  //   Two touches → pinch zoom.
+  // This differs from desktop (where double-click places directly) but
+  // matches the existing 2D mobile flow of select-then-confirm.
+  const TAP_MOVE_THRESHOLD_PX2 = 12 * 12;   // squared — beyond this = drag
+  let _touchStart = null;                    // { x, y } — initial touch position
+  let _pinchPrevDist = null;
+
+  function onTouchStart(e) {
+    if (!SD.active) return;
+    e.preventDefault();
+    if (e.touches.length === 1) {
+      const t = e.touches[0];
+      SD.dragging = false; // not a drag yet — upgraded if the finger moves
+      _touchStart = { x: t.clientX, y: t.clientY };
+      SD.lastMouse.x = t.clientX;
+      SD.lastMouse.y = t.clientY;
+    } else if (e.touches.length === 2) {
+      SD.dragging = false;
+      _touchStart = null;
+      const a = e.touches[0], b = e.touches[1];
+      _pinchPrevDist = Math.hypot(a.clientX - b.clientX, a.clientY - b.clientY);
+    }
+  }
+
+  function onTouchMove(e) {
+    if (!SD.active) return;
+    e.preventDefault();
+    if (e.touches.length === 1) {
+      const t = e.touches[0];
+      if (!SD.dragging && _touchStart) {
+        const dx0 = t.clientX - _touchStart.x;
+        const dy0 = t.clientY - _touchStart.y;
+        if (dx0 * dx0 + dy0 * dy0 > TAP_MOVE_THRESHOLD_PX2) {
+          SD.dragging = true;
+        }
+      }
+      if (SD.dragging) {
+        const dx = t.clientX - SD.lastMouse.x;
+        const dy = t.clientY - SD.lastMouse.y;
+        SD.camYaw -= dx * 0.008;
+        SD.camPitch += dy * 0.008;
+        const limit = Math.PI / 2 - 0.05;
+        if (SD.camPitch > limit) SD.camPitch = limit;
+        if (SD.camPitch < -limit) SD.camPitch = -limit;
+        SD.lastMouse.x = t.clientX;
+        SD.lastMouse.y = t.clientY;
+      }
+    } else if (e.touches.length === 2 && _pinchPrevDist !== null) {
+      const a = e.touches[0], b = e.touches[1];
+      const d = Math.hypot(a.clientX - b.clientX, a.clientY - b.clientY);
+      const ratio = _pinchPrevDist / (d || 1);
+      SD.camDist *= ratio;
+      if (SD.camDist < SD.R * 1.5) SD.camDist = SD.R * 1.5;
+      if (SD.camDist > SD.R * 6) SD.camDist = SD.R * 6;
+      _pinchPrevDist = d;
+    }
+  }
+
+  function onTouchEnd(e) {
+    if (!SD.active) return;
+    if (e.touches.length === 0) {
+      // All fingers lifted. If this was a plain tap (no drag, no pinch),
+      // pick the vertex under the start point and advertise it as the
+      // hoverVertex — the floating Place Stone button will confirm.
+      if (!SD.dragging && _touchStart) {
+        const vid = pickVertexFromPointer(_touchStart.x, _touchStart.y);
+        if (vid !== null) {
+          SD.hoverVid = vid;
+          if (typeof window.__sdSetHoverVertex === 'function') {
+            window.__sdSetHoverVertex(vid);
+          }
+        }
+      }
+      SD.dragging = false;
+      _touchStart = null;
+      _pinchPrevDist = null;
+    } else if (e.touches.length === 1) {
+      _pinchPrevDist = null;
+      const t = e.touches[0];
+      _touchStart = { x: t.clientX, y: t.clientY };
+      SD.dragging = false;
+      SD.lastMouse.x = t.clientX;
+      SD.lastMouse.y = t.clientY;
+    }
   }
 
   // Raycaster-based vertex picking. Cast ray from mouse → sphere surface →
@@ -789,8 +895,8 @@
     SD.camPitch = 0.35;
     SD.camDist = 800;
     SD.canvas.style.display = 'block';
-    // Make sure size is fresh in case of a resize while hidden
-    SD.renderer.setSize(window.innerWidth, window.innerHeight, false);
+    // Make sure size is fresh in case of a resize while hidden.
+    SD.renderer.setSize(window.innerWidth, window.innerHeight);
     SD.camera.aspect = window.innerWidth / window.innerHeight;
     SD.camera.updateProjectionMatrix();
     if (SD.rafId) cancelAnimationFrame(SD.rafId);

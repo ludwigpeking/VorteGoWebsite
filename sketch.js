@@ -1079,6 +1079,9 @@ function mousePressed() {
 
 // Mobile touch: drag finger to select nearest vertex, confirm button to place
 function touchStarted(event) {
+  // 3D mode: star_domination.js owns touch on its own canvas. Do nothing
+  // here or we double-fire and corrupt state.
+  if (window.StarDomination && window.StarDomination.active) return;
   // Only intercept touches directly on the canvas — let button/UI taps through
   if (!event || !event.target || event.target.tagName !== 'CANVAS') return;
   if (touches.length === 0) return false;
@@ -1093,6 +1096,7 @@ function touchStarted(event) {
 }
 
 function touchMoved(event) {
+  if (window.StarDomination && window.StarDomination.active) return;
   if (!event || !event.target || event.target.tagName !== 'CANVAS') return;
   if (touches.length === 0) return false;
   const t = touches[0];
@@ -1106,6 +1110,7 @@ function touchMoved(event) {
 }
 
 function touchEnded(event) {
+  if (window.StarDomination && window.StarDomination.active) return;
   if (!event || !event.target || event.target.tagName !== 'CANVAS') return;
   // Keep pendingVertex alive so the confirm button can use it
   hoverVertex = pendingVertex;
