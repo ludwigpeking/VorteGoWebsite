@@ -655,6 +655,7 @@ function onGameEnd(payload) {
   if (window.applyGameEnded) window.applyGameEnded(payload);
 }
 
+window.showGameEndModal = showGameEndModal;
 function showGameEndModal(result) {
   const modal = document.getElementById('gameEndModal');
   const titleEl = document.getElementById('gameEndTitle');

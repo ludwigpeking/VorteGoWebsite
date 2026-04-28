@@ -138,7 +138,12 @@ function setup() {
   window.__sdGetVertices = () => vertices;
   window.__sdGetQuads = () => quads;
   window.__sdGetMode = () => mode;
-  window.__sdSetHoverVertex = (v) => { hoverVertex = v; };
+  window.__sdSetHoverVertex = (v) => {
+    if (hoverVertex !== v) {
+      console.log('[__sdSetHoverVertex] hoverVertex', hoverVertex, '→', v);
+    }
+    hoverVertex = v;
+  };
   window.__sdTryPlaceStone = (vid) => {
     if (mode !== 'play') return false;
     hoverVertex = vid;
@@ -181,6 +186,7 @@ function setupMenuListeners() {
   document.getElementById('gameUndoBtn')?.addEventListener('click', undoStep);
   document.getElementById('gameRedoBtn')?.addEventListener('click', redoStep);
   document.getElementById('passBtn')?.addEventListener('click', () => handlePass(false));
+  document.getElementById('resignBtn')?.addEventListener('click', handleResign);
   document.getElementById('finishMarkingBtn')?.addEventListener('click', finishMarkingDeadStones);
   document.getElementById('scoreBtn')?.addEventListener('click', () => {
     const score = computeTrompTaylorScore();
@@ -1125,13 +1131,39 @@ function touchEnded(event) {
 
 // Called by the mobile confirm button
 window.confirmStonePlacement = function () {
-  if (mode !== 'play') return;
-  // Restore pendingVertex in case hoverVertex was cleared by mouseMoved
+  const sdActive = !!(window.StarDomination && window.StarDomination.active);
+  const sdHoverVid = sdActive ? window.StarDomination.hoverVid : null;
+  console.log('[confirmStonePlacement] clicked. mode=', mode,
+              ', SD.active=', sdActive, ', SD.hoverVid=', sdHoverVid,
+              ', hoverVertex=', hoverVertex, ', pendingVertex=', pendingVertex);
+  if (mode !== 'play') {
+    console.log('[confirmStonePlacement] aborted — not in play mode');
+    return;
+  }
+  // 3D Star Domination mode: the authoritative "last-picked vertex" lives in
+  // SD.hoverVid (set by the three.js canvas's touchend raycast). Pull from
+  // it directly — any intermediate event could have cleared the shared
+  // hoverVertex let-variable between the sphere tap and the button tap.
+  if (sdActive && typeof sdHoverVid === 'number') {
+    hoverVertex = sdHoverVid;
+  }
+  // Restore pendingVertex in case hoverVertex was cleared by mouseMoved (2D).
   if (hoverVertex === null && pendingVertex !== null) hoverVertex = pendingVertex;
+  if (hoverVertex === null) {
+    console.log('[confirmStonePlacement] aborted — no active position on the sphere');
+    return;
+  }
+  console.log('[confirmStonePlacement] attempting placeStone at vid =', hoverVertex);
   if (tryPlaceAtHover()) {
+    console.log('[confirmStonePlacement] placement succeeded');
     pendingVertex = null;
     hoverVertex = null;
+    if (window.StarDomination && window.StarDomination.active) {
+      window.StarDomination.hoverVid = null;
+    }
     redraw();
+  } else {
+    console.log('[confirmStonePlacement] placement BLOCKED by tryPlaceAtHover');
   }
 };
 
@@ -1160,6 +1192,69 @@ function doubleClicked() {
 function mouseWheel(event) {
   // 3D mode: three.js handles wheel on its own canvas.
   if (window.StarDomination && window.StarDomination.active) return;
+}
+
+// Resignation — instant loss for the resigning player. The opponent wins.
+//   Multiplayer competitive: server validates the resigner's seat and
+//   broadcasts game:end to both clients (which renders the modal).
+//   Solo / study / single-seat-room: end the game locally, save the
+//   record (if logged in) with endReason='resignation', and show the modal.
+function handleResign() {
+  if (gameEnded || markingDeadStones) return;
+  const msg = window.t ? t('play.confirmResign') : 'Resign the game? The opponent will win.';
+  if (!window.confirm(msg)) return;
+
+  const ms = window.multiplayerState;
+  const competitive = ms?.active
+    && (ms.color === 'black' || ms.color === 'white')
+    && (ms.memberCount || 0) >= 2
+    && ms.colorMode !== 'study';
+
+  if (competitive) {
+    // Server figures out the resigner from socket.id and broadcasts game:end
+    // to both clients. UI updates happen via applyGameEnded + showGameEndModal.
+    if (window.multiplayerResign) window.multiplayerResign();
+    return;
+  }
+
+  // Solo / study / solo-in-room — end locally. The resigner is whoever's
+  // turn it currently is (in solo play the local user controls both sides;
+  // in study mode either player can move so currentPlayer is the natural
+  // resigner). The opponent wins by resignation.
+  const resigner = currentPlayer;
+  const winner = resigner === 'black' ? 'white' : 'black';
+  gameEnded = true;
+  markingDeadStones = false;
+  appendLocalMove({ type: 'resign', color: resigner });
+  const result = { winner, endReason: 'resignation' };
+
+  // Hide marking/status UI in case the player resigned during dead-stone marking.
+  const deadStoneRow = document.getElementById('deadStoneRow');
+  const gameStatusRow = document.getElementById('gameStatusRow');
+  const clockBox = document.getElementById('clockBox');
+  if (deadStoneRow) deadStoneRow.style.display = 'none';
+  if (gameStatusRow) gameStatusRow.style.display = 'none';
+  if (clockBox) clockBox.style.display = 'none';
+
+  if (ms?.active) {
+    // Solo-in-room or study: tell the room via legacy game:end so spectators
+    // see the result. The server's game:resign handler ignores non-seated
+    // sockets, so we use game:end here instead.
+    if (window.multiplayerSendGameEnd) window.multiplayerSendGameEnd(result);
+  } else {
+    saveLocalRecord(result, 'resignation');
+  }
+
+  if (window.showGameEndModal) {
+    window.showGameEndModal({
+      winner,
+      endReason: 'resignation',
+      blackName: window.t ? t('room.black') : 'Black',
+      whiteName: window.t ? t('room.white') : 'White',
+    });
+  }
+  refreshTurnBanner();
+  redraw();
 }
 
 function handlePass(isRemote = false) {
@@ -3781,7 +3876,7 @@ function markLocalRecordUsedAI() {
   localRecordUsedAI = true;
 }
 
-async function saveLocalRecord(result) {
+async function saveLocalRecord(result, endReason = 'consent') {
   if (!localRecord) {
     console.log('[record] END (solo) — no active local record to save');
     return;
@@ -3809,7 +3904,7 @@ async function saveLocalRecord(result) {
         type: 'game-record',
         startedAt: localRecord.startedAt,
         endedAt: endedAt.toISOString(),
-        endReason: 'consent',
+        endReason,
         result: result || null,
         players: { black: { username: p1 }, white: { username: p2 } },
         initialGoban: localRecord.initialGoban,

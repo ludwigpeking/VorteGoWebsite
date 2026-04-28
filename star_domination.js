@@ -831,28 +831,38 @@
     SD.dragging = true;
     SD.lastMouse.x = e.clientX;
     SD.lastMouse.y = e.clientY;
+    // Explicit click-to-select: the press position is what the user wants
+    // selected. Without this the hover marker only follows the mouse cursor,
+    // so a quick click that lands on a vertex without lingering over it
+    // first wouldn't register, and the user would have to slow-drag onto
+    // the vertex to "land" the hover before clicking.
+    const vid = pickVertexFromPointer(e.clientX, e.clientY);
+    console.log('[SD] mousedown → pickVertex returned vid =', vid);
+    if (vid !== null) {
+      SD.hoverVid = vid;
+      if (typeof window.__sdSetHoverVertex === 'function') {
+        window.__sdSetHoverVertex(vid);
+      }
+    }
   }
 
   function onMouseMove(e) {
     if (!SD.active) return;
-    if (SD.dragging) {
-      const dx = e.clientX - SD.lastMouse.x;
-      const dy = e.clientY - SD.lastMouse.y;
-      SD.camYaw -= dx * 0.008;
-      // Drag-down → camera tilts up (pitch increases) → we see more of the
-      // top of the sphere. Conventional 3D-orbit direction.
-      SD.camPitch += dy * 0.008;
-      const limit = Math.PI / 2 - 0.05;
-      if (SD.camPitch > limit) SD.camPitch = limit;
-      if (SD.camPitch < -limit) SD.camPitch = -limit;
-      SD.lastMouse.x = e.clientX;
-      SD.lastMouse.y = e.clientY;
-    } else {
-      SD.hoverVid = pickVertexFromPointer(e.clientX, e.clientY);
-      if (typeof window.__sdSetHoverVertex === 'function') {
-        window.__sdSetHoverVertex(SD.hoverVid);
-      }
-    }
+    // ONLY clicking selects a vertex (see onMouseDown / onTouchEnd). Mouse
+    // movement without a button held down does nothing — no hover-follow.
+    // This matches the mobile tap-to-select flow exactly.
+    if (!SD.dragging) return;
+    const dx = e.clientX - SD.lastMouse.x;
+    const dy = e.clientY - SD.lastMouse.y;
+    SD.camYaw -= dx * 0.008;
+    // Drag-down → camera tilts up (pitch increases) → we see more of the
+    // top of the sphere. Conventional 3D-orbit direction.
+    SD.camPitch += dy * 0.008;
+    const limit = Math.PI / 2 - 0.05;
+    if (SD.camPitch > limit) SD.camPitch = limit;
+    if (SD.camPitch < -limit) SD.camPitch = -limit;
+    SD.lastMouse.x = e.clientX;
+    SD.lastMouse.y = e.clientY;
   }
 
   function onMouseUp() {
@@ -869,6 +879,7 @@
   function onDoubleClick(e) {
     if (!SD.active) return;
     const vid = pickVertexFromPointer(e.clientX, e.clientY);
+    console.log('[SD] dblclick → pickVertex returned vid =', vid);
     if (vid !== null && typeof window.__sdTryPlaceStone === 'function') {
       window.__sdTryPlaceStone(vid);
     }
@@ -957,12 +968,17 @@
       // hoverVertex — the floating Place Stone button will confirm.
       if (!SD.dragging && _touchStart) {
         const vid = pickVertexFromPointer(_touchStart.x, _touchStart.y);
+        console.log('[SD] touch tap → pickVertex returned vid =', vid,
+                    'at (', _touchStart.x, ',', _touchStart.y, ')');
         if (vid !== null) {
           SD.hoverVid = vid;
           if (typeof window.__sdSetHoverVertex === 'function') {
             window.__sdSetHoverVertex(vid);
           }
         }
+      } else {
+        console.log('[SD] touchend — no tap (dragging=', SD.dragging,
+                    ', _touchStart=', _touchStart, ')');
       }
       SD.dragging = false;
       _touchStart = null;
